@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="ToDoList — 面向开发者个人与小团队的项目上下文外脑。Workspace / List / Task。"
+    />
+    <title>ToDoList</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ToDoList" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <script>
+      /* Apply the persisted theme before first paint to avoid a flash of the wrong theme.
+         Mirrors UIContext: localStorage['todolist.theme'] = 'light' | 'dark'. */
+      (function () {
+        try {
+          var stored = window.localStorage.getItem('todolist.theme');
+          var theme =
+            stored === 'light' || stored === 'dark'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light';
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (error) {
+          /* localStorage unavailable (private mode): keep the light default. */
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

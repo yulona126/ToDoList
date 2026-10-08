@@ -1,0 +1,13 @@
+# ---------------------------------------------------------------------------
+# ToDoList backend dependencies
+# Python 3.12 (see backend/Dockerfile). Pinned for reproducible builds.
+# ---------------------------------------------------------------------------
+Django==5.2.10                      # LTS, supported until 2028
+djangorestframework==3.18.3
+djangorestframework-simplejwt==5.5.1
+psycopg[binary]==3.3.6
+django-cors-headers==4.9.0
+django-filter==26.2
+drf-spectacular==0.30.0
+gunicorn==26.2.0
+whitenoise==6.12.0

@@ -1,0 +1,39 @@
+# --- Environment / secrets --------------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Node -------------------------------------------------------------------
+node_modules/
+dist/
+dist-ssr/
+.vite/
+npm-debug.log*
+.npm-cache/
+
+# --- Local tooling (not part of the project) --------------------------------
+.docker/
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+staticfiles/
+media/
+*.sqlite3
+
+# --- Editors / OS -----------------------------------------------------------
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# --- Local database dumps ---------------------------------------------------
+*.dump
+*.sql.gz
+backups/

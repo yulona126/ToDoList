@@ -1,0 +1,110 @@
+# ---------------------------------------------------------------------------
+# ToDoList — one-command deployment:  docker compose up -d --build
+#
+# Ports (host):  web 8081 · api 8001 · postgres 5433
+#   8080 is intentionally avoided (Docker Desktop uses it on macOS).
+#   5433 avoids a clash with a locally installed PostgreSQL on 5432.
+# ---------------------------------------------------------------------------
+name: todolist
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-todolist}
+      POSTGRES_USER: ${POSTGRES_USER:-todolist}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-todolist_dev_password}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${POSTGRES_USER:-todolist} -d ${POSTGRES_DB:-todolist}
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - todolist
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: todolist-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-false}
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-*}
+      DJANGO_TIME_ZONE: ${DJANGO_TIME_ZONE:-UTC}
+      DJANGO_LOG_LEVEL: ${DJANGO_LOG_LEVEL:-INFO}
+      DJANGO_SECURE_SSL: ${DJANGO_SECURE_SSL:-false}
+      POSTGRES_DB: ${POSTGRES_DB:-todolist}
+      POSTGRES_USER: ${POSTGRES_USER:-todolist}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-todolist_dev_password}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      MAX_WORKSPACES_PER_USER: ${MAX_WORKSPACES_PER_USER:-50}
+      JWT_ACCESS_MINUTES: ${JWT_ACCESS_MINUTES:-60}
+      JWT_REFRESH_DAYS: ${JWT_REFRESH_DAYS:-14}
+      # Dev-only: allow the Vite dev server origin to call the API.
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      # Optional admin bootstrap on first boot.
+      DJANGO_SUPERUSER_EMAIL: ${DJANGO_SUPERUSER_EMAIL:-}
+      DJANGO_SUPERUSER_PASSWORD: ${DJANGO_SUPERUSER_PASSWORD:-}
+      DJANGO_SUPERUSER_USERNAME: ${DJANGO_SUPERUSER_USERNAME:-admin}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+    volumes:
+      - static_data:/app/staticfiles
+      - media_data:/app/media
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-8001}:8000"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - curl -fsS http://127.0.0.1:8000/api/v1/health/ >/dev/null || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    networks:
+      - todolist
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: todolist-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8081}:80"
+    volumes:
+      # Read-only access to Django's collected static files (admin, DRF docs).
+      - static_data:/var/www/static:ro
+      - media_data:/var/www/media:ro
+    networks:
+      - todolist
+
+volumes:
+  pgdata:
+    name: todolist_pgdata
+  static_data:
+    name: todolist_static
+  media_data:
+    name: todolist_media
+
+networks:
+  todolist:
+    name: todolist_net
+    driver: bridge
