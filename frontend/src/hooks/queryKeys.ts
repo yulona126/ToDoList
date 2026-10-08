@@ -40,4 +40,10 @@ export const queryKeys = {
     all: ['tags'] as const,
     list: (workspaceId: number) => ['tags', 'list', workspaceId] as const,
   },
+  ai: {
+    credential: ['ai', 'credential'] as const,
+    usage: (days: number) => ['ai', 'usage', days] as const,
+    /** Prefix that matches every usage window (today / 30d / …). */
+    usagePrefix: ['ai', 'usage'] as const,
+  },
 } as const;

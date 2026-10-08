@@ -23,6 +23,16 @@ export {
 export { useSubtasks } from './useSubtasks';
 export { useTags, useCreateTag, useDeleteTag } from './useTags';
 export {
+  useAiCredential,
+  useUpdateAiCredential,
+  useDeleteAiCredential,
+  useTestAiCredential,
+  useAiParse,
+  useAiSplitTask,
+  useAiUsage,
+  useBulkCreateTasks,
+} from './useAi';
+export {
   useKeyboardShortcuts,
   isEditableTarget,
   type KeyboardShortcutOptions,

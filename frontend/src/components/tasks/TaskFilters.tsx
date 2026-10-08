@@ -24,6 +24,7 @@ import {
 import { cn } from '../../lib/utils';
 import type { SelectOption } from '../ui/Select';
 import type { Tag } from '../../types';
+import { Button } from '../ui/Button';
 import { Icon, type IconName } from '../ui/Icon';
 import { IconButton } from '../ui/IconButton';
 import { Input } from '../ui/Input';
@@ -39,6 +40,8 @@ export interface TaskFiltersProps {
   selectionMode: boolean;
   onToggleSelectionMode: () => void;
   onNewList: () => void;
+  /** Opens the AI capture panel (`docs/ai-assistant.md` §3.1). */
+  onAiCapture: () => void;
 }
 
 interface ActiveChip {
@@ -69,6 +72,7 @@ export function TaskFilters({
   selectionMode,
   onToggleSelectionMode,
   onNewList,
+  onAiCapture,
 }: TaskFiltersProps) {
   const { t } = useTranslation();
   const activeCount = countActiveFilters(filters);
@@ -323,6 +327,17 @@ export function TaskFilters({
           options={orderingOptions}
           onChange={(event) => onChange({ ordering: event.target.value })}
         />
+
+        {/* AI capture sits next to the filter/sort controls and stays 28px tall
+            so row 1 keeps its one-line budget (design-system §3). */}
+        <Button
+          size="sm"
+          variant="secondary"
+          iconLeft={<Icon name="compass" size={13} />}
+          onClick={onAiCapture}
+        >
+          {t('ai.captureTitle')}
+        </Button>
 
         <div className="ml-auto flex items-center gap-1">
           <IconButton label={t('list.new')} onClick={onNewList}>

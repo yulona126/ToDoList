@@ -39,6 +39,7 @@ from .serializers import (
     WorkspaceMemberSerializer,
     WorkspaceSerializer,
 )
+from .services import bulk_create_tasks
 
 
 def _priority_rank_expression() -> Any:
@@ -271,6 +272,101 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
                 updated += 1
 
         return Response({"updated": updated})
+
+    @extend_schema(
+        request=dict,
+        responses={201: dict, 400: dict},
+        description=(
+            "Create many tasks (with optional sub-tasks) in one transaction. "
+            "Used by the AI confirmation panel and any bulk paste flow."
+        ),
+    )
+    @action(detail=False, methods=["post"], url_path="bulk-create")
+    def bulk_create(self, request: Request) -> Response:
+        items = request.data.get("tasks")
+        if not isinstance(items, list) or not items:
+            return Response(
+                {"detail": "tasks 必须是非空数组。", "errors": {"tasks": ["不能为空。"]}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(items) > 100:
+            return Response(
+                {"detail": "单次最多创建 100 条任务。", "errors": {}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        by_workspace: dict[int, list[dict[str, Any]]] = {}
+        for index, item in enumerate(items):
+            if not isinstance(item, dict):
+                return Response(
+                    {"detail": f"第 {index + 1} 条格式不正确。", "errors": {}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            workspace_id = item.get("workspace")
+            if not isinstance(workspace_id, int):
+                return Response(
+                    {"detail": f"第 {index + 1} 条缺少 workspace。", "errors": {}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            title = str(item.get("title") or "").strip()
+            if not title:
+                return Response(
+                    {"detail": f"第 {index + 1} 条缺少标题。", "errors": {}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            by_workspace.setdefault(workspace_id, []).append({**item, "title": title})
+
+        created: list[Task] = []
+        for workspace_id, rows in by_workspace.items():
+            workspace = (
+                Workspace.objects.for_user(request.user).filter(pk=workspace_id).first()
+            )
+            if workspace is None:
+                return Response(
+                    {"detail": f"工作区 {workspace_id} 不存在。", "errors": {}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            created.extend(bulk_create_tasks(request.user, workspace, rows))
+
+        if created:
+            self._attribute_to_recent_ai_usage(request.user, len(created))
+
+        return Response(
+            {
+                "created": len(created),
+                "tasks": self.get_serializer(created, many=True).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @staticmethod
+    def _attribute_to_recent_ai_usage(user: Any, count: int) -> None:
+        """Credit a recent AI parse with the tasks it produced.
+
+        Deliberately a heuristic: the confirm step is a separate request, so we
+        attribute to the user's most recent AI usage row from the last 15
+        minutes. Worst case a manual bulk-create shortly after an AI parse is
+        mis-attributed, which only affects a display counter — and it beats
+        sending a draft id the client would have to round-trip.
+        """
+        from datetime import timedelta
+
+        from apps.assistant.models import AiUsageRecord
+
+        cutoff = timezone.now() - timedelta(minutes=15)
+        latest = (
+            AiUsageRecord.objects.filter(
+                user=user,
+                created_at__gte=cutoff,
+                source=AiUsageRecord.Source.AI,
+            )
+            .order_by("-created_at")
+            .first()
+        )
+        if latest is None:
+            return
+        latest.created_tasks = latest.created_tasks + count
+        latest.save(update_fields=["created_tasks", "updated_at"])
 
     @extend_schema(
         request=BulkActionSerializer,

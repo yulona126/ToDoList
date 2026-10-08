@@ -103,6 +103,7 @@ LOCAL_APPS = [
     "apps.common",
     "apps.accounts",
     "apps.todos",
+    "apps.assistant",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -276,6 +277,32 @@ SECURE_REFERRER_POLICY = "same-origin"
 # Application limits
 # ---------------------------------------------------------------------------
 MAX_WORKSPACES_PER_USER = env_int("MAX_WORKSPACES_PER_USER", 50)
+
+# ---------------------------------------------------------------------------
+# AI assistant (docs/ai-assistant.md)
+# ---------------------------------------------------------------------------
+#: Fernet key protecting stored provider API keys. Falls back to a key derived
+#: from DJANGO_SECRET_KEY — convenient locally, but rotating SECRET_KEY then
+#: makes every stored key undecryptable, so production should set this.
+AI_ENCRYPTION_KEY = env("AI_ENCRYPTION_KEY", "")
+
+#: Per-user daily token ceiling; 0 disables the limit.
+AI_DAILY_TOKEN_BUDGET = env_int("AI_DAILY_TOKEN_BUDGET", 50_000)
+
+#: Offered in the settings dropdown. Model names churn, so they are config.
+AI_MODELS = env_list(
+    "AI_MODELS",
+    ["deepseek-flash", "deepseek-chat", "deepseek-reasoner"],
+)
+
+if not AI_ENCRYPTION_KEY:
+    import logging as _logging
+
+    _logging.getLogger("config.settings").warning(
+        "AI_ENCRYPTION_KEY is not set; stored AI API keys are encrypted with a key "
+        "derived from DJANGO_SECRET_KEY. Changing DJANGO_SECRET_KEY will make them "
+        "unreadable — set AI_ENCRYPTION_KEY before relying on this in production."
+    )
 
 # ---------------------------------------------------------------------------
 # Logging — everything to stdout so `docker logs` captures it.

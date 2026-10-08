@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Icon } from '../components/ui/Icon';
+import { AiCaptureModal } from '../components/ai/AiCaptureModal';
 import { ListFormModal } from '../components/list/ListFormModal';
 import { Button } from '../components/ui/Button';
 import { DropdownMenu, type DropdownMenuItem } from '../components/ui/DropdownMenu';
@@ -105,6 +106,7 @@ export function WorkspacePage() {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [workspaceModalOpen, setWorkspaceModalOpen] = useState(false);
   const [workspaceDeleteOpen, setWorkspaceDeleteOpen] = useState(false);
+  const [aiCaptureOpen, setAiCaptureOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const reportError = useCallback(
@@ -346,6 +348,7 @@ export function WorkspacePage() {
           setEditingList(null);
           setListModalOpen(true);
         }}
+        onAiCapture={() => setAiCaptureOpen(true)}
       />
 
       {selectionMode ? (
@@ -644,6 +647,13 @@ export function WorkspacePage() {
         open={workspaceModalOpen}
         workspace={workspace ?? null}
         onClose={() => setWorkspaceModalOpen(false)}
+      />
+
+      <AiCaptureModal
+        open={aiCaptureOpen}
+        workspaceId={workspaceId}
+        defaultListId={focusedListId}
+        onClose={() => setAiCaptureOpen(false)}
       />
 
       <ConfirmDialog

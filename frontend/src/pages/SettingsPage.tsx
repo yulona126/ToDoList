@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { AiSettingsSection } from '../components/ai/AiSettingsSection';
 import { AlertBanner } from '../components/auth/AlertBanner';
 import { Button } from '../components/ui/Button';
 import { Icon } from '../components/ui/Icon';
@@ -250,6 +251,8 @@ export function SettingsPage() {
           ))}
         </div>
       </Section>
+
+      <AiSettingsSection />
     </div>
   );
 }

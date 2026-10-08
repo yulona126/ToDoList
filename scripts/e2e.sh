@@ -300,6 +300,51 @@ code="$(http POST "${API}/auth/refresh/" \
   -H 'Content-Type: application/json' -d "{\"refresh\":\"${REFRESH_A}\"}")"
 expect_status 401 "${code}" "blacklisted refresh token is rejected"
 
+# --- 8. AI assistant (the local path needs no API key) ----------------------
+section "8. AI assistant"
+
+code="$(http GET "${API}/ai/credential/" "${AUTH_A[@]}")"
+expect_status 200 "${code}" "GET /ai/credential/ (unconfigured)"
+if [ "${code}" = "200" ]; then
+  expect_eq "False" "$(json configured)" "no credential configured yet"
+  case "$(json models_available)" in
+    *deepseek*) ok "model list is exposed and configurable" ;;
+    *) ko "model list missing from the credential payload" ;;
+  esac
+fi
+
+# A marked-up one-liner must be handled by the local rule parser: 0 tokens.
+code="$(http POST "${API}/ai/parse/" "${AUTH_A[@]}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"workspace\":${WS_ID},\"text\":\"写登录页 @开发 #api !高 明天\"}")"
+expect_status 200 "${code}" "local parse of a marked-up line"
+expect_eq "local" "$(json source)" "source == local, so no model call"
+expect_eq "0" "$(json usage.total_tokens)" "local parse costs 0 tokens"
+expect_eq "写登录页" "$(json tasks.0.t)" "title extracted"
+expect_eq "high" "$(json tasks.0.p)" "priority marker honoured"
+expect_eq "${LIST_ID}" "$(json tasks.0.l)" "list marker mapped to a real id"
+
+# Free-form text with no key configured must fail cleanly, never 500.
+code="$(http POST "${API}/ai/parse/" "${AUTH_A[@]}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"workspace\":${WS_ID},\"text\":\"这是一段没有标记的自由文本，需要交给模型处理\",\"mode\":\"ai\"}")"
+expect_status 400 "${code}" "AI mode without a key returns 400"
+
+code="$(http POST "${API}/tasks/bulk-create/" "${AUTH_A[@]}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"tasks\":[{\"workspace\":${WS_ID},\"task_list\":${LIST_ID},\"title\":\"批量创建的任务\",\"priority\":\"high\",\"tag_names\":[\"新标签\"],\"subtasks\":[\"子任务一\"]}]}")"
+expect_status 201 "${code}" "bulk-create creates tasks"
+expect_eq "1" "$(json created)" "bulk-create reports 1 created"
+expect_eq "1" "$(json tasks.0.subtask_stats.total)" "sub-task created with its parent"
+
+code="$(http GET "${API}/ai/usage/" "${AUTH_A[@]}")"
+expect_status 200 "${code}" "GET /ai/usage/"
+expect_eq "0" "$(json tokens.total_tokens)" "no tokens spent (local path only)"
+
+code="$(http POST "${API}/tasks/bulk-create/" "${AUTH_A[@]}" \
+  -H 'Content-Type: application/json' -d '{"tasks":[]}')"
+expect_status 400 "${code}" "bulk-create rejects an empty list"
+
 # --- cleanup ----------------------------------------------------------------
 section "cleanup"
 if docker compose ps --status running --services 2>/dev/null | grep -qx backend; then

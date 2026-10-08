@@ -11,3 +11,7 @@ django-filter==26.2
 drf-spectacular==0.30.0
 gunicorn==26.2.0
 whitenoise==6.12.0
+
+# AI assistant (docs/ai-assistant.md)
+httpx==0.28.1                       # DeepSeek HTTP client (timeouts, no retries)
+cryptography==50.0.2                # Fernet encryption for stored API keys

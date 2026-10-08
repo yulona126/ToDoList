@@ -35,6 +35,15 @@
 - **每个用户各自的数据**，跨用户访问一律 404（有自动化测试保障）
 - 共享工作区的表结构与查询边界已就绪，V1.2 直接开启
 
+**AI 录入（可选，需自备 DeepSeek API Key）**
+
+- 一段杂乱的想法 / 会议纪要 → 结构化任务草稿，确认后批量创建
+- **本地规则解析优先**：`写登录页 @开发 #api !高 明天` 这类输入完全不走模型，**0 token**
+- 系统提示词逐字节固定以命中上下文缓存、输出用单字符键、只发清单/标签**名字**不发 id、绝不发送工作区内已有任务
+- 设置页填写 API Key（服务端 Fernet 加密存储，接口永不返回明文），带「测试连接」与用量统计
+- 每日 token 配额兜底，超限直接拒绝
+- 详见 [AI 方案](docs/ai-assistant.md)
+
 **体验**
 
 - 中文 / English 一键切换，明暗主题，全站持久化
@@ -50,7 +59,7 @@
 | 层 | 技术 |
 | --- | --- |
 | 前端 | React 19 · TypeScript 5.9 (strict) · Vite 8 · Tailwind CSS 4 · TanStack Query 5 · React Router 7 · i18next · axios · tailwind-merge |
-| 后端 | Python 3.12 · Django 5.2 LTS · DRF 3.18 · SimpleJWT · drf-spectacular · psycopg 3 |
+| 后端 | Python 3.12 · Django 5.2 LTS · DRF 3.18 · SimpleJWT · drf-spectacular · psycopg 3 · httpx · cryptography |
 | 数据 | PostgreSQL 17 |
 | 部署 | Docker Compose · Nginx · Gunicorn · WhiteNoise |
 | PWA | vite-plugin-pwa (Workbox) |
@@ -104,6 +113,7 @@ ToDoList/
 │   ├── data-model.md           数据模型字段级说明与业务规则
 │   ├── api.md                  REST API 契约（前后端唯一事实来源）
 │   ├── design-system.md        黑白极简设计系统
+│   ├── ai-assistant.md         AI 任务录入方案（模型、提示词、token 经济）
 │   ├── deployment.md           部署与运维手册
 │   ├── development.md          本地开发指南
 │   └── roadmap.md              演进路线 V1.1 → V2.0
@@ -159,6 +169,7 @@ make build-frontend
 | 表结构、字段含义、业务规则 | [数据模型](docs/data-model.md) |
 | 接口怎么调？字段叫什么？ | [API 契约](docs/api.md) |
 | 为什么是黑白？组件长什么样？ | [设计系统](docs/design-system.md) |
+| AI 怎么接？怎么省 token？ | [AI 方案](docs/ai-assistant.md) |
 | 怎么部署？怎么做备份？出问题怎么办？ | [部署手册](docs/deployment.md) |
 | 怎么本地改代码？ | [开发指南](docs/development.md) |
 | 后面还会做什么？ | [演进路线](docs/roadmap.md) |

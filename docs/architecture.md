@@ -85,6 +85,22 @@
 | 领域层 | Django Model / Manager | 数据约束、owner 作用域、软删除与排序 | 不感知 HTTP |
 | 基础设施 | Postgres / Nginx / Docker | 持久化、静态托管、编排 | — |
 
+**可选旁路：AI 助手（`apps/assistant/`）**
+不参与主流程——它只**产出草稿**，落库仍走 `apps/todos` 的正规入口（`bulk-create`）。
+关掉它、Key 失效、上游宕机，都不影响手工录入。分层上：
+
+```
+前端本地解析器  ──► 直接调 /tasks/bulk-create/     （0 token，最常见路径）
+      │
+      └─ 规则不够用 ──► /ai/parse/ ──► local_parser ──►（不够）──► DeepSeek ──► 归一层 ──► 草稿
+                                                                              │
+                                                              用户确认 ──► /tasks/bulk-create/
+```
+
+AI 输出被当作**不可信输入**，必须经 `services.normalize_drafts` 归一化：
+枚举校验、日期解析、清单名→id 映射、标签按名创建、长度截断、条数上限。
+详见 [ai-assistant.md](ai-assistant.md)。
+
 ---
 
 ## 4. 技术选型与理由

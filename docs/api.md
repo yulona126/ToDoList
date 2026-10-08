@@ -315,7 +315,57 @@ DELETE → 204。该清单下的任务**不删除**，其 `task_list` 置为 `nu
 
 ---
 
-## 6. 健康检查
+## 6. AI 助手 `/ai` · 另见 [ai-assistant.md](ai-assistant.md)
+
+全部需认证。API Key 由服务端加密保存，**接口永不返回明文**（只回 `key_mask`）。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/ai/credential/` | → `{configured, provider, model, base_url, key_mask, is_active, models_available, tokens_used_today, daily_token_budget, last_verified_at, last_error}` |
+| `PUT` | `/ai/credential/` | `{api_key?, provider?, model?, base_url?, is_active?}`；`api_key` 留空表示不改；首次配置必须提供 |
+| `DELETE` | `/ai/credential/` | 204 |
+| `POST` | `/ai/credential/test/` | `max_tokens=1` 的连通性探测 → `{ok, model, latency_ms}` |
+| `POST` | `/ai/parse/` | 文本 → 任务草稿（见下） |
+| `POST` | `/ai/split/` | `{task_id}` → `{subtasks:[{t}], usage, latency_ms}` |
+| `GET` | `/ai/usage/?days=30` | token 账目 + `local_ratio`（本地解析占比） |
+
+### POST `/ai/parse/`
+
+```jsonc
+// 请求
+{ "workspace": 1, "text": "写登录页 @开发 #api !高 明天", "mode": "auto" }
+// mode: auto(默认，先本地规则后模型) | local(只用规则) | ai(强制模型)
+
+// 200
+{
+  "source": "local",                       // local | ai
+  "tasks": [{
+    "t": "写登录页", "l": 7, "l_name": "开发",
+    "p": "high", "y": null, "d": "2026-10-09",
+    "g": [], "g_names": ["api"],           // g=已存在的标签 id；g_names=全部名字（未知的在确认时创建）
+    "s": []                                // 子任务标题
+  }],
+  "warnings": [{ "code": "list_not_found", "message": "…", "value": "前端" }],
+  "usage": { "prompt_tokens": 0, "completion_tokens": 0, "cached_tokens": 0, "total_tokens": 0 },
+  "latency_ms": 0
+}
+```
+
+错误：未配置 Key → **400**；配额用尽 → **429**；上游失败 → **502**。
+
+### POST `/tasks/bulk-create/`
+
+```jsonc
+{ "tasks": [{ "workspace": 1, "task_list": 7, "title": "…", "priority": "high",
+              "tag_names": ["api"], "subtasks": ["子任务一"] }] }
+// 201 { "created": 2, "tasks": [ /* Task */ ] }
+```
+
+事务内批量创建（含子任务与按名新建标签）；任一条不合法则整体 400。
+
+---
+
+## 7. 健康检查
 
 ### GET `/health/` · 公开（无需认证）
 
@@ -330,7 +380,7 @@ DELETE → 204。该清单下的任务**不删除**，其 `task_list` 置为 `nu
 
 ---
 
-## 7. 前端调用速查表
+## 8. 前端调用速查表
 
 | 场景 | 调用 |
 | --- | --- |
@@ -342,3 +392,5 @@ DELETE → 204。该清单下的任务**不删除**，其 `task_list` 置为 `nu
 | 勾选完成 | `POST /tasks/{id}/toggle/` |
 | 添加子任务 | `POST /tasks/` 带 `parent` |
 | 展开子任务 | `GET /tasks/?workspace=&parent={id}` |
+| AI 录入 | `POST /ai/parse/` → 确认 → `POST /tasks/bulk-create/` |
+| 本地标记录入 | `POST /ai/parse/`（`source: "local"`，0 token） |

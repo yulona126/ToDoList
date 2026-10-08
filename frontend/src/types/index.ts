@@ -287,3 +287,189 @@ export interface HealthStatus {
   db: string;
   version: string;
 }
+
+/* --------------------------------------------------------------- §AI assistant */
+
+/**
+ * `docs/ai-assistant.md` §5 — the AI credential row exposed to the browser.
+ * The plaintext key NEVER crosses this boundary: `key_mask` is all the UI gets.
+ */
+export interface AiCredential {
+  configured: boolean;
+  provider: string;
+  model: string;
+  base_url: string;
+  /** `sk-****abcd` or `''` when nothing is stored. */
+  key_mask: string;
+  is_active: boolean;
+  last_verified_at: string | null;
+  last_error: string;
+  /** Model names offered as datalist suggestions; the field stays free text. */
+  models_available: string[];
+  /** Quota telemetry so the settings page can warn before a call is rejected. */
+  tokens_used_today: number;
+  daily_token_budget: number;
+}
+
+/** `PUT /ai/credential/` — an absent/empty `api_key` means "keep the stored one". */
+export interface AiCredentialUpdate {
+  api_key?: string;
+  provider?: string;
+  model?: string;
+  base_url?: string;
+  is_active?: boolean;
+}
+
+/** `POST /ai/credential/test/` — a `max_tokens=1` probe. */
+export interface AiCredentialTestResult {
+  ok: boolean;
+  model: string;
+  latency_ms: number;
+  error?: string;
+}
+
+export type AiParseMode = 'auto' | 'local' | 'ai';
+
+/** `POST /ai/parse/` request. */
+export interface AiParseRequest {
+  workspace: ID;
+  text: string;
+  mode?: AiParseMode;
+  /** Fallback list when the text does not name one. */
+  default_list?: ID;
+  default_type?: TaskType;
+}
+
+/**
+ * One draft exactly as it travels on the wire.
+ *
+ * The short keys are the model's own JSON shape (T3 in ai-assistant.md §2) that
+ * the server echoes back, so they are part of the contract. Components must
+ * never read them: `hooks/useAi.ts` maps them to camelCase first.
+ */
+export interface AiDraft {
+  /** title */
+  t: string;
+  /** list id */
+  l: ID | null;
+  /** list name */
+  l_name: string | null;
+  /** priority */
+  p: TaskPriority | null;
+  /** task type (y = type, t is already taken by the title) */
+  y: TaskType | null;
+  /** due date, `YYYY-MM-DD` */
+  d: string | null;
+  /** tag ids */
+  g: ID[];
+  /** tag names */
+  g_names: string[];
+  /** sub-task titles */
+  s: string[];
+}
+
+export interface AiWarning {
+  code: string;
+  message: string;
+  value?: string;
+}
+
+/** Token accounting straight from the provider's `usage` block (§4.2). */
+export interface AiUsage {
+  prompt_tokens: number;
+  completion_tokens: number;
+  cached_tokens: number;
+  total_tokens: number;
+}
+
+export interface AiParseResponse {
+  source: 'local' | 'ai';
+  tasks: AiDraft[];
+  warnings: AiWarning[];
+  usage: AiUsage | null;
+  latency_ms: number;
+}
+
+/** `POST /ai/split/` — `{task_id}` in, sub-task titles + usage out (§5). */
+export interface AiSplitRequest {
+  task_id: ID;
+}
+
+export interface AiSplitResponse {
+  subtasks: Array<{ t: string }>;
+  usage: AiUsage | null;
+  latency_ms: number;
+}
+
+/** `GET /ai/usage/` — one audit row (§4.2). */
+export interface AiUsageRecord {
+  id: ID;
+  kind: 'parse' | 'split' | 'test' | string;
+  model: string;
+  ok: boolean;
+  /** `local` = resolved by the rule parser, i.e. zero API cost. */
+  source: 'local' | 'ai' | string;
+  error: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  cached_tokens: number;
+  total_tokens: number;
+  latency_ms: number;
+  /** Tasks that the request ended up creating. */
+  created_tasks: number;
+  created_at: string;
+}
+
+/**
+ * `GET /ai/usage/?days=30` — the aggregate window plus the latest 20 rows.
+ *
+ * `ai_calls` vs `local_calls` and `local_ratio` are the "did we save tokens"
+ * metric: a high local ratio means T1 is carrying the daily capture load.
+ */
+export interface AiUsageSummary {
+  days: number;
+  ai_calls: number;
+  local_calls: number;
+  local_ratio: number;
+  created_tasks: number;
+  /** Token totals for the whole window, with cache hits broken out. */
+  tokens: AiUsage;
+  tokens_used_today: number;
+  quota_remaining: number;
+  daily_token_budget: number;
+  recent: AiUsageRecord[];
+}
+
+/* ------------------------------------------- §5 tasks/bulk-create (AI confirm) */
+
+/**
+ * One row of `POST /tasks/bulk-create/`.
+ *
+ * This endpoint goes beyond `POST /tasks/` on purpose: it takes tag **names**
+ * (the server `get_or_create`s them, which is what the `#tag` grammar implies)
+ * and nested `subtasks` titles, so a confirmed draft is persisted in one
+ * transaction without first resolving ids client-side.
+ */
+export interface BulkCreateItem {
+  workspace: ID;
+  task_list?: ID | null;
+  parent?: ID | null;
+  title: string;
+  description?: string;
+  status?: TaskStatus;
+  priority?: TaskPriority;
+  task_type?: TaskType;
+  due_date?: string | null;
+  tag_ids?: ID[];
+  tag_names?: string[];
+  subtasks?: string[];
+}
+
+export interface BulkCreatePayload {
+  tasks: BulkCreateItem[];
+}
+
+export interface BulkCreateResult {
+  created: number;
+  tasks: Task[];
+}
