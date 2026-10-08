@@ -48,3 +48,6 @@ backups/
 # Local token files that Cursor's mcp.json may reference via `envFile`.
 .mcp.env
 *.mcp.env
+
+# One-shot AI key re-encryption during secret rotation
+.ai-key-migration

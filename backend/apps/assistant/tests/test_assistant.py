@@ -180,6 +180,14 @@ class LocalParserTests(APITestCase):
 
 
 class CryptoTests(APITestCase):
+    """Key-management semantics for stored provider credentials.
+
+    `AI_ENCRYPTION_KEY` exists precisely so that rotating `DJANGO_SECRET_KEY`
+    does not orphan every stored DeepSeek key. These tests pin all three
+    behaviours down, because the failure mode (an undecryptable credential) is
+    silent until someone tries to use the AI feature.
+    """
+
     def test_round_trip(self) -> None:
         token = crypto.encrypt("sk-secret-value")
         self.assertNotIn(b"sk-secret-value", token)
@@ -193,12 +201,31 @@ class CryptoTests(APITestCase):
     def test_mask_handles_short_keys(self) -> None:
         self.assertEqual(crypto.mask("abc"), "abc****")
 
-    def test_decrypt_raises_after_key_rotation(self) -> None:
-        token = crypto.encrypt("sk-value")
-        with override_settings(SECRET_KEY="a-completely-different-secret"):
+    def test_without_a_dedicated_key_secret_rotation_breaks_credentials(self) -> None:
+        """The documented footgun: with no AI_ENCRYPTION_KEY the Fernet key is
+        derived from SECRET_KEY, so rotating SECRET_KEY orphans stored keys."""
+        with override_settings(SECRET_KEY="secret-one", AI_ENCRYPTION_KEY=""):
+            token = crypto.encrypt("sk-value")
+        with override_settings(SECRET_KEY="secret-two", AI_ENCRYPTION_KEY=""):
             with self.assertRaises(crypto.CredentialDecryptionError):
                 crypto.decrypt(token)
 
+    def test_dedicated_key_survives_secret_key_rotation(self) -> None:
+        """Why AI_ENCRYPTION_KEY exists: stored credentials stop depending on
+        SECRET_KEY, so the two can be rotated independently."""
+        with override_settings(SECRET_KEY="secret-one", AI_ENCRYPTION_KEY="stable"):
+            token = crypto.encrypt("sk-value")
+        with override_settings(SECRET_KEY="secret-two", AI_ENCRYPTION_KEY="stable"):
+            self.assertEqual(crypto.decrypt(token), "sk-value")
+
+    def test_rotating_the_dedicated_key_breaks_credentials(self) -> None:
+        """The flip side, and why docs/ai-assistant.md warns about it: rotating
+        AI_ENCRYPTION_KEY itself orphans stored credentials."""
+        with override_settings(AI_ENCRYPTION_KEY="dedicated-one"):
+            token = crypto.encrypt("sk-value")
+        with override_settings(AI_ENCRYPTION_KEY="dedicated-two"):
+            with self.assertRaises(crypto.CredentialDecryptionError):
+                crypto.decrypt(token)
 
 class BaseUrlValidationTests(APITestCase):
     def test_accepts_https(self) -> None:
