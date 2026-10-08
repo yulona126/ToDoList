@@ -1,5 +1,7 @@
 # ToDoList · Cursor 集成（MCP + Agent Skill）
 
+> 📘 **只想照着步骤装？看 [MCP.md](../MCP.md)** —— 那份是操作指南；本文讲设计原理与取舍。
+>
 > 目标场景：在 Cursor 里说「**把这个版本的待办整理进开发计划**」，
 > Cursor 自己调用 MCP 把你的 ToDoList 工作区拉进来，写进当前的计划文档。
 

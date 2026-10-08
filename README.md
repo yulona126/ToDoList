@@ -113,6 +113,7 @@ make down    # 停止（保留数据）
 ```
 ToDoList/
 ├── README.md
+├── MCP.md                       Cursor 安装与使用指南（先看这个）
 ├── docker-compose.yml          一条命令拉起 db + backend + frontend
 ├── .env.example                环境变量契约（全部有默认值）
 ├── Makefile                    常用操作
@@ -179,6 +180,8 @@ make build-frontend
 | 表结构、字段含义、业务规则 | [数据模型](docs/data-model.md) |
 | 接口怎么调？字段叫什么？ | [API 契约](docs/api.md) |
 | 为什么是黑白？组件长什么样？ | [设计系统](docs/design-system.md) |
+| **怎么在 Cursor 里装好并用起来？** | **[MCP.md](MCP.md)** ← 操作指南 |
+| MCP / Skill 的设计取舍 | [Cursor 集成设计](docs/mcp-and-skills.md) |
 | AI 怎么接？怎么省 token？ | [AI 方案](docs/ai-assistant.md) |
 | 怎么在 Cursor 里拉取/写回任务？ | [Cursor 集成](docs/mcp-and-skills.md) |
 | 怎么部署？怎么做备份？出问题怎么办？ | [部署手册](docs/deployment.md) |

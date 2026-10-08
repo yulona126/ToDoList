@@ -1,0 +1,9 @@
+# ToDoList MCP server dependencies.
+#
+# The server talks to the ToDoList REST API and needs only the official MCP SDK.
+# It deliberately has no other dependency: note that mcp==2.3.0 pulls in
+# `httpx2`, not `httpx`, so the client uses the standard library instead.
+#
+#   python3 -m venv mcp/.venv
+#   mcp/.venv/bin/pip install -r mcp/requirements.txt
+mcp==2.3.0

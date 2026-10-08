@@ -101,6 +101,27 @@ services:
     networks:
       - todolist
 
+  # ---------------------------------------------------------------------------
+  # Dev tool: the stdio MCP server for Cursor. NOT started by `docker compose up`
+  # (it speaks JSON-RPC on stdin/stdout, so the MCP client must run it).
+  #
+  # Build:           docker compose --profile tools build mcp
+  # Cursor runs it:  docker run -i --rm --network todolist_net todolist-mcp:latest
+  # See MCP.md for the full setup.
+  # ---------------------------------------------------------------------------
+  mcp:
+    build:
+      context: ./mcp
+      dockerfile: Dockerfile
+    image: todolist-mcp:${IMAGE_TAG:-latest}
+    profiles: ["tools"]
+    environment:
+      TODOLIST_API_URL: http://backend:8000/api/v1
+      # Injected at run time; never baked into the image.
+      TODOLIST_TOKEN: ${TODOLIST_TOKEN:-}
+    networks:
+      - todolist
+
 volumes:
   pgdata:
     name: todolist_pgdata
