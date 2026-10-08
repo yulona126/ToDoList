@@ -124,6 +124,38 @@ class LocalParserTests(APITestCase):
         self.assertEqual(result.drafts[0].t, "同步 !nope 进度")
         self.assertIsNone(result.drafts[0].priority)
 
+    def test_next_week_weekday_counts_from_monday(self) -> None:
+        """Regression: `下周三` from a Thursday is next week, not the week after.
+
+        The naive "next occurrence + 7 days" rule overshoots whenever the
+        requested weekday has already passed in the current week. The frontend
+        parser (``src/lib/localParse.ts``) counts from Monday; the two must
+        agree or the instant preview promises a date the server won't store.
+        """
+        # 2026-10-08 is a Thursday.
+        today = date(2026, 10, 8)
+        cases = {
+            "下周一": "2026-10-12",
+            "下周二": "2026-10-13",
+            "下周三": "2026-10-14",
+            "下周四": "2026-10-15",
+            "下周五": "2026-10-16",
+            "下周六": "2026-10-17",
+            "下周日": "2026-10-18",
+            "下下周三": "2026-10-21",
+            "下周": "2026-10-12",  # bare form: Monday of next week
+        }
+        for word, expected in cases.items():
+            with self.subTest(word=word):
+                result = self.parse(f"做点事 {word}", today=today)
+                self.assertEqual(result.drafts[0].due_date, expected)
+
+    def test_this_week_weekday_rolls_forward(self) -> None:
+        today = date(2026, 10, 8)  # Thursday
+        self.assertEqual(self.parse("做点事 周三", today).drafts[0].due_date, "2026-10-14")
+        self.assertEqual(self.parse("做点事 周四", today).drafts[0].due_date, "2026-10-08")
+        self.assertEqual(self.parse("做点事 周六", today).drafts[0].due_date, "2026-10-10")
+
     def test_multi_line_creates_multiple_drafts(self) -> None:
         result = self.parse("写文档 @开发\n跑测试 @开发")
         self.assertEqual(len(result.drafts), 2)

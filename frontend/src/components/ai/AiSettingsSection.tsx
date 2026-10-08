@@ -274,13 +274,14 @@ export function AiSettingsSection() {
                 : t('ai.usageTokens', { total: usage.tokens.total_tokens })}
             </span>
             <span>
-              {t('ai.usageSources', {
-                ai: usage.ai_calls,
-                local: usage.local_calls,
-              })}
+              {t('ai.usageAiCalls', { ai: usage.ai_calls })}
               {' · '}
               {t('ai.usageCreated', { total: usage.created_tasks })}
             </span>
+            {/* The local parser short-circuits in the browser (docs §8), so the
+                server never sees those events. Saying so beats showing a
+                permanent, misleading "0 local parses". */}
+            <span className="text-fg-subtle">{t('ai.usageLocalHint')}</span>
           </div>
         )}
       </div>

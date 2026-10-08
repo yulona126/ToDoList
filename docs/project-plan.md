@@ -273,14 +273,14 @@ Node v22.18.0 / npm 10.9.3
 | G1 | `docker compose config --quiet` | ✅ 通过 |
 | G2 | `manage.py check` | ✅ `System check identified no issues (0 silenced)` |
 | G3 | `manage.py makemigrations --check --dry-run` | ✅ `No changes detected` |
-| G4 | `manage.py test` | ✅ **Ran 75 tests — OK** |
+| G4 | `manage.py test` | ✅ **Ran 142 tests — OK** |
 | G5 | `npm run typecheck` | ✅ 0 error |
 | G6 | `npm run build` | ✅ 产出 `dist/`，含 `sw.js`、`manifest.webmanifest`，precache 15 项 |
-| G7 | `./scripts/e2e.sh` | ✅ **passed 51 / failed 0** |
+| G7 | `./scripts/e2e.sh` | ✅ **passed 67 / failed 0** |
 
 补充验证（超出基础门禁）：
 
-- G4 额外在**已构建镜像内、无源码挂载**的条件下重跑 → 仍然 75 项全绿，
+- G4 额外在**已构建镜像内、无源码挂载**的条件下重跑 → 仍然 142 项全绿，
   证明交付物本身（而非开发目录）是可用的。
 - 通过 Nginx 实测：`/assets/*` 为 `immutable, max-age=31536000`；
   `sw.js` / `index.html` 为 `no-cache, no-store`；`manifest.webmanifest`
@@ -325,7 +325,29 @@ Node v22.18.0 / npm 10.9.3
 | 前端测试 | 未规划单测 | 仅 `tsc` + 构建 + 脚本化 i18n 审计 | 前端单测（Vitest）列入 V1.1；当前以 E2E 覆盖关键路径 |
 | 前端包体 | 未设预算 | 单个 chunk 513 KB（gzip 160 KB），构建有告警 | 未做路由级 code splitting；列入 V1.1 |
 
-### 10.5 结论
+### 10.5 计划外增量：AI 任务录入
+
+§2.2 的非目标里原本把 AI 排到 V2.0。后续按用户要求提前落地了第一批，
+独立成篇（[ai-assistant.md](ai-assistant.md)），因此不在 §3 的 WBS 中：
+
+| 编号 | 任务 | 状态 |
+| --- | --- | --- |
+| A-01 | 本地规则解析器（前后端双实现，语法一致） | ✅ |
+| A-02 | DeepSeek 客户端（超时、无重试、usage 解析） | ✅ |
+| A-03 | API Key Fernet 加密存储 + 掩码接口 + SSRF 防护 | ✅ |
+| A-04 | 提示词 token 经济（固定前缀、短键、只发名字） | ✅ |
+| A-05 | 输出归一层（枚举/日期/清单映射/截断/告警） | ✅ |
+| A-06 | `POST /ai/parse/`、`/ai/split/`、`/ai/usage/` | ✅ |
+| A-07 | `POST /tasks/bulk-create/`（事务批量，非 AI 专用） | ✅ |
+| A-08 | 每日 token 配额 + 用量审计 | ✅ |
+| A-09 | 设置页 AI 区块、录入面板、草稿确认列表 | ✅ |
+| A-10 | 测试（全部 mock，不打真实网络） | ✅ 新增 67 例 |
+
+**仍未验证**：没有真实 DeepSeek API Key，因此**一次真实模型调用都没有跑过**。
+上述全部测试与 E2E 走的都是 mock 或本地解析路径。
+首次配置 Key 后请先点「测试连接」，并用一段真实文本确认提示词效果。
+
+### 10.6 结论
 
 G1–G7 七道门禁全部通过，§7.1 / §7.2 / §7.3 的验收清单逐项确认，
 `docs/roadmap.md` 中标注"❌ 不需要迁移"的演进项（共享工作区、看板拖拽）

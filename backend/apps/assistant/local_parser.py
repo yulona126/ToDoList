@@ -78,12 +78,19 @@ def _resolve_relative_date(word: str, today: date) -> date | None:
     if match:
         prefix, day_char = match.groups()
         target = WEEKDAY_NAMES[day_char]
-        # Days until the next occurrence of that weekday; 0 means today.
-        delta = (target - today.weekday()) % 7
-        # "下周三" is that weekday in the following week, not this one.
         if prefix:
-            delta += 7 * len(prefix)
-        return today + timedelta(days=delta)
+            # "下周三" = that weekday in the *next calendar week*, counted from
+            # Monday. Taking "the next occurrence" and adding 7 overshoots by a
+            # week whenever that weekday has already passed — with today=Thu,
+            # 周三 would resolve to the Wednesday *after* next.
+            monday = (
+                today
+                - timedelta(days=today.weekday())
+                + timedelta(weeks=len(prefix))
+            )
+            return monday + timedelta(days=target)
+        # Days until the next occurrence of that weekday; 0 means today.
+        return today + timedelta(days=(target - today.weekday()) % 7)
 
     if word in ("下周", "下个星期"):
         # Monday of next week.
