@@ -115,6 +115,75 @@ docker compose --profile tunnel logs -f cloudflared   # 看到 Registered tunnel
 
 ---
 
+## 3.5 宿主机已装 cloudflared 的情况（本机就是这种）
+
+如果 cloudflared 是**装在宿主机上**的（`brew install cloudflared`），那么它解析不了
+Docker 的服务名 `frontend`，**Service URL 要填宿主机端口**：
+
+| 字段 | 值 |
+| --- | --- |
+| Subdomain | `todo` |
+| Domain | `yulon.dev` |
+| Type | `HTTP` |
+| **URL** | **`localhost:8081`** |
+
+两种方式的区别：
+
+| cloudflared 跑在哪 | Service URL | 宿主机端口要不要开 |
+| --- | --- | --- |
+| **宿主机**（brew） | `localhost:8081` | 要（`WEB_PORT`） |
+| 容器内（compose `tunnel` profile） | `frontend:80` | 不要 |
+
+> 填错成 `frontend:80` 会得到 **502 Unable to reach the origin** ——
+> 宿主机上的 cloudflared 不认识这个名字。
+
+之后：
+
+```bash
+cloudflared tunnel run <你的 tunnel 名>
+# 或使用 dashboard 托管的 token：
+cloudflared tunnel run --token <TOKEN>
+```
+
+---
+
+## 3.6 开机自启（macOS）
+
+容器本身已经有 `restart: unless-stopped`，但**它只在 Docker 守护进程运行时才起作用**。
+本机 Docker Desktop 的 `AutoStart = False`，所以重启后守护进程不会起来，
+容器自然也不会回来。
+
+两种做法，任选其一：
+
+**A. 打开 Docker Desktop 自启（最简单）**
+
+Docker Desktop → Settings → General → 勾选
+**Start Docker Desktop when you sign in**。
+
+之后 `restart: unless-stopped` 就会自动把三个容器拉回来。
+
+**B. 用本仓库提供的 LaunchAgent（更稳，能等到守护进程就绪）**
+
+```bash
+cd /path/to/ToDoList
+./scripts/install-autostart-macos.sh
+```
+
+它会在 `~/Library/LaunchAgents/dev.yulon.todolist.plist` 安装一个登录项，
+执行 `scripts/autostart-macos.sh`：等待 Docker 守护进程（最多 300 秒，
+必要时 `open -a Docker`）→ `docker compose up -d`。
+
+```bash
+# 立刻测试，不用真的重启
+launchctl kickstart -k gui/$(id -u)/dev.yulon.todolist
+tail -f ~/Library/Logs/todolist-autostart.log
+
+# 卸载
+./scripts/install-autostart-macos.sh uninstall
+```
+
+日志：`~/Library/Logs/todolist-autostart.log`
+
 ## 4. 必须同步修改的环境变量
 
 Tunnel 生效后，Django 收到的 Host 和协议都变了，**这三项必须一起改**，否则会出现
