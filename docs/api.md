@@ -351,7 +351,12 @@ DELETE → 204。该清单下的任务**不删除**，其 `task_list` 置为 `nu
 }
 ```
 
-错误：未配置 Key → **400**；配额用尽 → **429**；上游失败 → **502**。
+错误：配额用尽 → **429**；上游失败 → **502**。
+
+- `mode=ai` 但未配置 Key → **400**（用户明确要模型时拒绝）
+- `mode=auto` 但未配置 Key → **200**，`source: "local"`，按标点粗拆，
+  并在 `warnings` 中给出 `ai_unavailable` 说明（**不会返回空**）
+- `mode=local` 遇到无标记长文本 → 同样粗拆，warning 为 `rough_split`
 
 ### POST `/tasks/bulk-create/`
 

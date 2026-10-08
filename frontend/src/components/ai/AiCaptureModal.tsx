@@ -131,10 +131,17 @@ export function AiCaptureModal({
     [listIdByName],
   );
 
-  /** The instant, free preview: what the local parser would create right now. */
+  /**
+   * The instant, free preview.
+   *
+   * When the input looks like prose (`shouldEscalate`) we preview the
+   * best-effort punctuation split rather than the single blob the strict rules
+   * produce — that is exactly what `mode=auto` returns when no model is
+   * configured, so the preview matches the server.
+   */
   const localDrafts = useMemo<CaptureDraft[]>(
     () =>
-      localResult.drafts.map((draft, index) => ({
+      localResult.fallbackDrafts.map((draft, index) => ({
         id: `local-${index}`,
         selected: true,
         expanded: false,
@@ -150,7 +157,7 @@ export function AiCaptureModal({
         tagNames: draft.tagNames,
         subtasks: [],
       })),
-    [localResult.drafts, listIdByName],
+    [localResult.fallbackDrafts, listIdByName],
   );
 
   const hasAiResult = aiResult !== null;

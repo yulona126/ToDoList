@@ -330,6 +330,26 @@ code="$(http POST "${API}/ai/parse/" "${AUTH_A[@]}" \
   -d "{\"workspace\":${WS_ID},\"text\":\"这是一段没有标记的自由文本，需要交给模型处理\",\"mode\":\"ai\"}")"
 expect_status 400 "${code}" "AI mode without a key returns 400"
 
+# Graceful degradation: `auto` on unmarked prose must still yield tasks rather
+# than dead-ending on "no API key configured".
+PROSE='下周2howto text会, real time 和 playback 显示的roi 都要显示， 只是可以手动隐藏一些roi (需要等下周joy整合完), 接入library页面, 跳转需要到新library页面'
+code="$(http POST "${API}/ai/parse/" "${AUTH_A[@]}" \
+  -H 'Content-Type: application/json' \
+  --data-binary "$(python3 -c 'import json,sys; print(json.dumps({"workspace": int(sys.argv[1]), "text": sys.argv[2], "mode": "auto"}, ensure_ascii=False))' "${WS_ID}" "${PROSE}")")"
+expect_status 200 "${code}" "auto parse of prose degrades instead of failing"
+expect_eq "local" "$(json source)" "degraded result is still a local result"
+expect_eq "0" "$(json usage.total_tokens)" "degraded result costs 0 tokens"
+SECOND_TASK="$(json tasks.1.t)"
+if [ -n "${SECOND_TASK}" ]; then
+  ok "prose was split into multiple tasks (2nd: ${SECOND_TASK})"
+else
+  ko "prose was NOT split; it produced a single blob" "$(body_head)"
+fi
+case "$(json warnings.0.code)$(json warnings.1.code)" in
+  *ai_unavailable*) ok "the degraded result says why AI was not used" ;;
+  *) ko "missing ai_unavailable warning" "$(body_head)" ;;
+esac
+
 code="$(http POST "${API}/tasks/bulk-create/" "${AUTH_A[@]}" \
   -H 'Content-Type: application/json' \
   -d "{\"tasks\":[{\"workspace\":${WS_ID},\"task_list\":${LIST_ID},\"title\":\"批量创建的任务\",\"priority\":\"high\",\"tag_names\":[\"新标签\"],\"subtasks\":[\"子任务一\"]}]}")"

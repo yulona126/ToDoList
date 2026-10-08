@@ -33,6 +33,13 @@ export interface LocalDraft {
 
 export interface LocalParseResult {
   drafts: LocalDraft[];
+  /**
+   * Rough punctuation split of the same input, used when the model is not in
+   * play. Mirrors the server's `parse_best_effort` so the preview cannot
+   * promise something different from what a `mode=auto` call returns.
+   * Equals `drafts` when no escalation is needed.
+   */
+  fallbackDrafts: LocalDraft[];
   /** Human-readable, already localised by the caller (see `unknownListLabel`). */
   warnings: string[];
   /** `true` ⇒ the caller should offer (or run) an AI call. */
@@ -116,6 +123,11 @@ const RELATIVE_DAYS: Record<string, number> = {
   后天: 2,
   大后天: 3,
 };
+
+/** Sentence punctuation used by the best-effort splitter (mirrors the backend).
+ *  ASCII `!` is excluded: it is the priority marker (`!高`). */
+const SPLIT_RE = /[，,。；;！？?\n\r]+/;
+const MAX_FALLBACK_DRAFTS = 8;
 
 const WEEKDAY_TOKEN = /^(下+)?(?:周|星期|礼拜)([一二三四五六日天])$/;
 const SHORT_DATE_TOKEN = /^(\d{1,2})-(\d{1,2})$/;
@@ -319,5 +331,21 @@ export function localParse(text: string, opts: LocalParseOptions): LocalParseRes
       lines.length > MAX_LOCAL_LINES ||
       trimmed.length > MAX_LOCAL_LENGTH);
 
-  return { drafts, warnings, shouldEscalate };
+  // Best-effort fallback: treat sentence punctuation as a task boundary. Used
+  // whenever the model is unavailable, so the user never gets one 107-character
+  // "task" or an empty result.
+  let fallbackDrafts = drafts;
+  if (shouldEscalate) {
+    const rough: LocalDraft[] = [];
+    for (const fragment of trimmed.split(SPLIT_RE)) {
+      const piece = fragment.trim();
+      if (!piece) continue;
+      const parsed = parseLine(piece, opts, base);
+      if (parsed.draft) rough.push(parsed.draft);
+      if (rough.length >= MAX_FALLBACK_DRAFTS) break;
+    }
+    if (rough.length > 0) fallbackDrafts = rough;
+  }
+
+  return { drafts, fallbackDrafts, warnings, shouldEscalate };
 }

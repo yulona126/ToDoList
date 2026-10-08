@@ -242,6 +242,55 @@ def normalize_drafts(
 
 
 # ------------------------------------------------------------------ orch.
+def _local_response(
+    user: Any,
+    workspace: Workspace,
+    local_result: local_parser.LocalParseResult,
+    default_list_id: int | None,
+    default_task_type: str | None,
+    *,
+    extra_warnings: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Shape a rules-only result into the API payload and book it as free."""
+    drafts, normalize_warnings = normalize_drafts(
+        workspace,
+        [
+            {
+                "t": d.t,
+                "l": d.list_name,
+                "p": d.priority,
+                "y": d.task_type,
+                "d": d.due_date,
+                "g": d.tag_names,
+            }
+            for d in local_result.drafts
+        ],
+        default_list_id=default_list_id,
+        default_task_type=default_task_type,
+    )
+    record_usage(user, AiUsageRecord.Kind.PARSE, source=AiUsageRecord.Source.LOCAL)
+
+    warnings = [{"code": "local", "message": m} for m in local_result.warnings]
+    warnings.extend(extra_warnings or [])
+    warnings.extend(normalize_warnings)
+
+    if not drafts and not warnings:
+        warnings.append({"code": "empty", "message": "没有从这段文字里提取到任务。"})
+
+    return {
+        "source": "local",
+        "tasks": drafts,
+        "warnings": warnings,
+        "usage": {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "cached_tokens": 0,
+            "total_tokens": 0,
+        },
+        "latency_ms": 0,
+    }
+
+
 def parse_text(
     user: Any,
     workspace: Workspace,
@@ -268,63 +317,68 @@ def parse_text(
             today=timezone.localdate(),
             max_tasks=MAX_DRAFTS,
         )
-        use_local = bool(local.drafts) and (
-            mode == "local" or not local.should_escalate
-        )
-        if use_local:
-            drafts, extra = normalize_drafts(
-                workspace,
-                [
-                    {
-                        "t": d.t,
-                        "l": d.list_name,
-                        "p": d.priority,
-                        "y": d.task_type,
-                        "d": d.due_date,
-                        "g": d.tag_names,
-                    }
-                    for d in local.drafts
-                ],
-                default_list_id=default_list_id,
-                default_task_type=default_task_type,
-            )
-            record_usage(user, AiUsageRecord.Kind.PARSE, source=AiUsageRecord.Source.LOCAL)
-            return {
-                "source": "local",
-                "tasks": drafts,
-                "warnings": [
-                    {"code": "local", "message": message} for message in local.warnings
-                ]
-                + extra,
-                "usage": {
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0,
-                    "cached_tokens": 0,
-                    "total_tokens": 0,
-                },
-                "latency_ms": 0,
-            }
+        confident = bool(local.drafts) and not local.should_escalate
+
+        if confident:
+            return _local_response(user, workspace, local, default_list_id, default_task_type)
 
         if mode == "local":
-            return {
-                "source": "local",
-                "tasks": [],
-                "warnings": [
-                    {"code": "empty", "message": "本地解析没有提取到任务。"}
+            # Rules-only was requested on prose. Handing back a single
+            # 100-character "task" (or nothing) is useless, so fall back to a
+            # punctuation split instead of failing.
+            rough = local_parser.parse_best_effort(
+                text,
+                lists=lists,
+                today=timezone.localdate(),
+                max_tasks=MAX_DRAFTS,
+            )
+            return _local_response(
+                user,
+                workspace,
+                rough,
+                default_list_id,
+                default_task_type,
+                extra_warnings=[
+                    {
+                        "code": "rough_split",
+                        "message": (
+                            f"这段文字没有标记，已按标点粗拆成 {len(rough.drafts)} 条，请逐条确认。"
+                        ),
+                    }
                 ],
-                "usage": {
-                    "prompt_tokens": 0,
-                    "completion_tokens": 0,
-                    "cached_tokens": 0,
-                    "total_tokens": 0,
-                },
-                "latency_ms": 0,
-            }
+            )
 
     # ---- AI path -----------------------------------------------------------
     credential = get_credential(user)
     if credential is None or not credential.usable:
-        raise AiNotConfigured("尚未配置 AI，请先在「设置 → AI 分析」中填入 API Key。")
+        if mode == "ai":
+            # The caller explicitly demanded a model; refusing is honest.
+            raise AiNotConfigured(
+                "尚未配置 AI，请先在「设置 → AI 分析」中填入 API Key。"
+            )
+        # `auto` degrades gracefully: a rough split beats a dead end.
+        rough = local_parser.parse_best_effort(
+            text,
+            lists=lists,
+            today=timezone.localdate(),
+            max_tasks=MAX_DRAFTS,
+        )
+        return _local_response(
+            user,
+            workspace,
+            rough,
+            default_list_id,
+            default_task_type,
+            extra_warnings=[
+                {
+                    "code": "ai_unavailable",
+                    "message": (
+                        f"尚未配置 AI，已按标点粗拆成 {len(rough.drafts)} 条。"
+                        "在「设置 → AI 分析」填入 API Key 后可获得更准确的拆分。"
+                    ),
+                }
+            ],
+        )
 
     enforce_quota(user)
 
