@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   DUE_FILTER_LABEL_KEY,
   DUE_FILTER_VALUES,
+  DEFAULT_TASK_ORDERING,
   TASK_ORDERING_OPTIONS,
   TASK_PRIORITY_LABEL_KEY,
   TASK_PRIORITY_VALUES,
@@ -20,11 +21,13 @@ import {
   countActiveFilters,
   type TaskFilterState,
 } from '../../lib/taskFilters';
+import { cn } from '../../lib/utils';
 import type { SelectOption } from '../ui/Select';
 import type { Tag } from '../../types';
-import { Button } from '../ui/Button';
-import { Icon } from '../ui/Icon';
+import { Icon, type IconName } from '../ui/Icon';
+import { IconButton } from '../ui/IconButton';
 import { Input } from '../ui/Input';
+import { Popover } from '../ui/Popover';
 import { Select } from '../ui/Select';
 
 export interface TaskFiltersProps {
@@ -38,10 +41,24 @@ export interface TaskFiltersProps {
   onNewList: () => void;
 }
 
+interface ActiveChip {
+  key: keyof TaskFilterState;
+  icon: IconName;
+  label: string;
+  value: string;
+}
+
 /**
- * Filter bar for the task board: status / priority / type / tag / due + ordering.
- * The values accept comma-separated multi-select on the wire (api.md §4); the UI
- * deliberately exposes one value per facet to stay readable at 375px.
+ * Task board toolbar.
+ *
+ * Layout budget is deliberately tight (the previous revision stacked six
+ * full-width selects into ~7 rows):
+ *
+ *   row 1 — status segments · 筛选 · 排序 · new list · bulk select · count
+ *   row 2 — removable chips, rendered ONLY while a filter is active
+ *
+ * Everything that does not fit on a 375px viewport (status, ordering) is moved
+ * into the 筛选 popover rather than wrapping onto extra rows.
  */
 export function TaskFilters({
   filters,
@@ -99,122 +116,307 @@ export function TaskFilters({
     (option) => ({ value: option.value, label: t(option.labelKey) }),
   );
 
-  return (
-    <div className="flex flex-col gap-2 border-b border-border pb-3">
-      <div className="sm:hidden">
-        <Input
-          ref={searchRef}
-          type="search"
-          value={filters.search}
-          onChange={(event) => onChange({ search: event.target.value })}
-          placeholder={t('task.searchPlaceholder')}
-          aria-label={t('common.search')}
-          leadingIcon={<Icon name="search" size={14} />}
-        />
-      </div>
+  const orderingLabel =
+    orderingOptions.find((option) => option.value === filters.ordering)?.label ??
+    t('task.filterOrdering');
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Select
+  /* Removable summary of everything currently narrowing the list. */
+  const chips: ActiveChip[] = [];
+  if (filters.status) {
+    chips.push({
+      key: 'status',
+      icon: 'check',
+      label: t('task.filterStatus'),
+      value: t(TASK_STATUS_LABEL_KEY[filters.status]),
+    });
+  }
+  if (filters.priority) {
+    chips.push({
+      key: 'priority',
+      icon: 'alert',
+      label: t('task.filterPriority'),
+      value: t(TASK_PRIORITY_LABEL_KEY[filters.priority]),
+    });
+  }
+  if (filters.taskType) {
+    chips.push({
+      key: 'taskType',
+      icon: 'dot',
+      label: t('task.filterType'),
+      value: t(TASK_TYPE_LABEL_KEY[filters.taskType]),
+    });
+  }
+  if (filters.tagId !== null) {
+    const tag = tags.find((item) => item.id === filters.tagId);
+    chips.push({
+      key: 'tagId',
+      icon: 'tag',
+      label: t('task.filterTag'),
+      value: tag?.name ?? String(filters.tagId),
+    });
+  }
+  if (filters.due !== DueFilter.All) {
+    chips.push({
+      key: 'due',
+      icon: 'calendar',
+      label: t('task.filterDue'),
+      value: t(DUE_FILTER_LABEL_KEY[filters.due]),
+    });
+  }
+  if (filters.ordering !== DEFAULT_TASK_ORDERING) {
+    chips.push({
+      key: 'ordering',
+      icon: 'refresh',
+      label: t('task.filterOrdering'),
+      value: orderingLabel,
+    });
+  }
+
+  const clearChip = (key: keyof TaskFilterState): void => {
+    if (key === 'due') onChange({ due: DueFilter.All });
+    else if (key === 'ordering') onChange({ ordering: DEFAULT_TASK_ORDERING });
+    else if (key === 'tagId') onChange({ tagId: null });
+    else if (key === 'status') onChange({ status: null });
+    else if (key === 'priority') onChange({ priority: null });
+    else if (key === 'taskType') onChange({ taskType: null });
+  };
+
+  const statusSegment = (value: TaskStatus | null, label: string) => {
+    const active = filters.status === value;
+    return (
+      <button
+        key={value ?? 'all'}
+        type="button"
+        aria-pressed={active}
+        onClick={() => onChange({ status: value })}
+        className={cn(
+          'h-8 px-2.5 text-secondary motion-safe-150 first:rounded-l-control last:rounded-r-control',
+          'border-y border-r border-border first:border-l',
+          active
+            ? 'bg-accent font-medium text-fg-inverse'
+            : 'bg-bg text-fg-muted hover:bg-surface-muted hover:text-fg',
+        )}
+      >
+        {label}
+      </button>
+    );
+  };
+
+  return (
+    <div className="border-b border-border pb-2.5">
+      {/* ---------------------------------------------------------- row 1 */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+        <div className="w-full min-w-0 sm:hidden">
+          <Input
+            ref={searchRef}
+            type="search"
+            value={filters.search}
+            onChange={(event) => onChange({ search: event.target.value })}
+            placeholder={t('task.searchPlaceholder')}
+            aria-label={t('common.search')}
+            leadingIcon={<Icon name="search" size={14} />}
+          />
+        </div>
+
+        {/* Status is the most-used facet, so it stays inline on ≥ 640px. */}
+        <div
+          role="group"
           aria-label={t('task.filterStatus')}
-          containerClassName="w-[110px]"
-          value={filters.status ?? ''}
-          options={statusOptions}
-          onChange={(event) =>
-            onChange({
-              status: (event.target.value || null) as TaskStatus | null,
-            })
+          className="hidden items-center sm:flex"
+        >
+          {statusSegment(null, t('common.all'))}
+          {TASK_STATUS_VALUES.map((value) =>
+            statusSegment(value, t(TASK_STATUS_LABEL_KEY[value])),
+          )}
+        </div>
+
+        <Popover
+          triggerLabel={t('task.filtersTitle')}
+          trigger={
+            <>
+              <Icon name="filter" size={14} />
+              <span>{t('task.filters')}</span>
+              {activeCount > 0 ? (
+                <span className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center rounded-pill bg-accent px-1 text-[11px] font-medium text-fg-inverse tabular-nums">
+                  {activeCount}
+                </span>
+              ) : null}
+            </>
           }
-        />
-        <Select
-          aria-label={t('task.filterPriority')}
-          containerClassName="w-[110px]"
-          value={filters.priority ?? ''}
-          options={priorityOptions}
-          onChange={(event) =>
-            onChange({
-              priority: (event.target.value || null) as TaskPriority | null,
-            })
-          }
-        />
-        <Select
-          aria-label={t('task.filterType')}
-          containerClassName="w-[110px]"
-          value={filters.taskType ?? ''}
-          options={typeOptions}
-          onChange={(event) =>
-            onChange({
-              taskType: (event.target.value || null) as TaskType | null,
-            })
-          }
-        />
-        <Select
-          aria-label={t('task.filterTag')}
-          containerClassName="w-[130px]"
-          value={filters.tagId === null ? '' : String(filters.tagId)}
-          options={tagOptions}
-          onChange={(event) =>
-            onChange({
-              tagId: event.target.value ? Number(event.target.value) : null,
-            })
-          }
-        />
-        <Select
-          aria-label={t('task.filterDue')}
-          containerClassName="w-[110px]"
-          value={filters.due}
-          options={dueOptions}
-          onChange={(event) =>
-            onChange({ due: event.target.value as DueFilter })
-          }
-        />
+          panelClassName="max-h-[70vh] overflow-y-auto"
+        >
+          <div className="flex flex-col gap-2.5">
+            {/* Status and sort only live here on narrow screens. */}
+            <Select
+              label={t('task.filterStatus')}
+              containerClassName="sm:hidden"
+              value={filters.status ?? ''}
+              options={statusOptions}
+              onChange={(event) =>
+                onChange({
+                  status: (event.target.value || null) as TaskStatus | null,
+                })
+              }
+            />
+            <Select
+              label={t('task.filterPriority')}
+              value={filters.priority ?? ''}
+              options={priorityOptions}
+              onChange={(event) =>
+                onChange({
+                  priority: (event.target.value || null) as TaskPriority | null,
+                })
+              }
+            />
+            <Select
+              label={t('task.filterType')}
+              value={filters.taskType ?? ''}
+              options={typeOptions}
+              onChange={(event) =>
+                onChange({
+                  taskType: (event.target.value || null) as TaskType | null,
+                })
+              }
+            />
+            <Select
+              label={t('task.filterTag')}
+              value={filters.tagId === null ? '' : String(filters.tagId)}
+              options={tagOptions}
+              onChange={(event) =>
+                onChange({
+                  tagId: event.target.value ? Number(event.target.value) : null,
+                })
+              }
+            />
+            <Select
+              label={t('task.filterDue')}
+              value={filters.due}
+              options={dueOptions}
+              onChange={(event) =>
+                onChange({ due: event.target.value as DueFilter })
+              }
+            />
+            <Select
+              label={t('task.filterOrdering')}
+              containerClassName="sm:hidden"
+              value={filters.ordering}
+              options={orderingOptions}
+              onChange={(event) => onChange({ ordering: event.target.value })}
+            />
+          </div>
+
+          {activeCount > 0 ? (
+            <button
+              type="button"
+              onClick={onReset}
+              className="mt-3 w-full rounded-control border border-border px-2 py-1.5 text-meta text-fg-muted motion-safe-150 hover:border-border-strong hover:text-fg"
+            >
+              {t('task.clearAllFilters')}
+            </button>
+          ) : null}
+        </Popover>
+
         <Select
           aria-label={t('task.filterOrdering')}
-          containerClassName="w-[130px]"
+          containerClassName="hidden w-[124px] sm:block"
           value={filters.ordering}
           options={orderingOptions}
           onChange={(event) => onChange({ ordering: event.target.value })}
         />
 
-        {activeCount > 0 ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onReset}
-            iconLeft={<Icon name="close" size={12} />}
+        <div className="ml-auto flex items-center gap-1">
+          <IconButton label={t('list.new')} onClick={onNewList}>
+            <Icon name="folder" size={14} />
+          </IconButton>
+
+          <IconButton
+            label={
+              selectionMode
+                ? t('task.selectionModeOff')
+                : t('task.selectionModeOn')
+            }
+            variant={selectionMode ? 'secondary' : 'ghost'}
+            aria-pressed={selectionMode}
+            onClick={onToggleSelectionMode}
+            className={selectionMode ? 'border-fg' : undefined}
           >
-            {t('task.resetFilters')}
-          </Button>
-        ) : null}
+            <Icon name={selectionMode ? 'close' : 'check'} size={14} />
+          </IconButton>
+        </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onNewList}
-          iconLeft={<Icon name="folder" size={13} />}
-        >
-          {t('list.new')}
-        </Button>
+      {/* ------------------------------------- row 2 — only while filtering */}
+      {chips.length > 0 ? (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {chips.map((chip) => (
+            <span
+              key={chip.key}
+              className="inline-flex h-6 max-w-[240px] items-center gap-1 rounded-pill border border-border bg-surface-muted pr-1 pl-2 text-meta text-fg"
+            >
+              <Icon
+                name={chip.icon}
+                size={11}
+                className="shrink-0 text-fg-subtle"
+              />
+              <span className="truncate">
+                <span className="text-fg-muted">{chip.label}</span>
+                {' · '}
+                {chip.value}
+              </span>
+              <button
+                type="button"
+                aria-label={t('task.removeFilter', {
+                  name: `${chip.label} ${chip.value}`,
+                })}
+                title={t('task.removeFilter', { name: chip.label })}
+                onClick={() => clearChip(chip.key)}
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-pill text-fg-subtle motion-safe-150 hover:bg-border hover:text-fg"
+              >
+                <Icon name="close" size={10} />
+              </button>
+            </span>
+          ))}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onToggleSelectionMode}
-          aria-pressed={selectionMode}
-          iconLeft={<Icon name={selectionMode ? 'close' : 'check'} size={13} />}
-        >
-          {selectionMode ? t('task.selectionModeOff') : t('task.selectionModeOn')}
-        </Button>
+          {filters.search ? (
+            <span className="inline-flex h-6 max-w-[240px] items-center gap-1 rounded-pill border border-border bg-surface-muted pr-1 pl-2 text-meta text-fg">
+              <Icon name="search" size={11} className="shrink-0 text-fg-subtle" />
+              <span className="truncate">
+                <span className="text-fg-muted">{t('common.search')}</span>
+                {' · '}
+                {filters.search}
+              </span>
+              <button
+                type="button"
+                aria-label={t('task.removeFilter', { name: t('common.search') })}
+                onClick={() => onChange({ search: '' })}
+                className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-pill text-fg-subtle motion-safe-150 hover:bg-border hover:text-fg"
+              >
+                <Icon name="close" size={10} />
+              </button>
+            </span>
+          ) : null}
 
-        <span className="ml-auto hidden text-meta text-fg-subtle md:inline">
-          {t('task.keyboardHint')}
-        </span>
+          <button
+            type="button"
+            onClick={onReset}
+            className="ml-1 text-meta text-fg-muted underline-offset-2 motion-safe-150 hover:text-fg hover:underline"
+          >
+            {t('task.clearAllFilters')}
+          </button>
 
-        <span className="text-meta text-fg-subtle md:ml-3">
-          {t('common.countTotal', { total: resultCount })}
-        </span>
-      </div>
+          {/* The result count only appears while filtering: the header already
+              totals the workspace, and the two numbers count different things
+              (top-level rows here vs. every task including sub-tasks there). */}
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-meta text-fg-subtle tabular-nums">
+              {t('common.countTotal', { total: resultCount })}
+            </span>
+            <span className="hidden text-meta text-fg-subtle md:inline">
+              {t('task.keyboardHint')}
+            </span>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

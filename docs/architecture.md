@@ -112,6 +112,7 @@
 | TypeScript | 5.9 (strict) | 契约类型安全，`strict: true` + 无 `any` |
 | Vite | 8.3 | 构建快，PWA 插件生态成熟 |
 | Tailwind CSS | 4.3 (`@tailwindcss/vite`) | v4 零配置，设计令牌用 CSS 变量，天然适合黑白极简 |
+| tailwind-merge | 3.7 | `cn()` 的冲突消解层，保证「基类 + 调用方覆盖」可靠生效 |
 | TanStack Query | 5.104 | 服务端状态缓存/失效/乐观更新，省掉手写 store |
 | React Router | 7.18 | 客户端路由 |
 | axios | 1.20 | 拦截器实现静默刷新 token |
@@ -247,6 +248,11 @@ frontend/src
 | 瞬时 UI | 组件本地 state | Modal 开关、表单草稿 |
 
 **不引入全局 store**：任何一处的业务数据都应可通过 queryKey 溯源。
+
+> **样式合并约定**：`lib/utils.ts` 的 `cn()` 必须为 `twMerge(clsx(...))`。
+> 组件普遍采用「基类 + 调用方覆盖」（如 `Select` 的 `containerClassName`），
+> 而纯 `clsx` 会同时输出冲突的 `w-full` 与 `w-[110px]`，让胜负取决于样式表顺序 ——
+> 这正是筛选栏曾退化成 7 行的根因（见 project-plan §10.3 D9）。
 
 ### 8.3 路由
 

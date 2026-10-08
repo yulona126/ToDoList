@@ -18,6 +18,7 @@ V1 的取舍原则：**先把数据模型和查询边界做对，功能可以慢
 | 依赖漏洞扫描 | CI 中加 `pip-audit` + `npm audit` | ❌ |
 | 前端单元测试 | 引入 Vitest + Testing Library，覆盖 hooks 与乐观更新回滚 | ❌ |
 | 路由级代码分割 | `React.lazy` 拆 Settings/NotFound，消除 500 KB chunk 告警 | ❌ |
+| 多标签页刷新竞争 | 两个标签页并发用同一 refresh 刷新时，后者被黑名单拒绝并登出。方案：为被轮换的 refresh 加 30s 宽限窗口（`OutstandingToken` 已有 `created_at`），或改为不复用即失效 + 前端 401 后重读 localStorage 重试一次 | ❌ |
 
 ---
 

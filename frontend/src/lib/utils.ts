@@ -3,6 +3,7 @@ import dayjs from 'dayjs';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import utc from 'dayjs/plugin/utc';
+import { twMerge } from 'tailwind-merge';
 import type { Task } from '../types';
 import { PRIORITY_RANK, TaskPriority, type TaskStatus } from './constants';
 
@@ -10,9 +11,17 @@ dayjs.extend(relativeTime);
 dayjs.extend(isSameOrBefore);
 dayjs.extend(utc);
 
-/** Tailwind-friendly class combiner. */
+/**
+ * Tailwind-friendly class combiner.
+ *
+ * `twMerge` is essential, not cosmetic: components put base utilities (e.g.
+ * `w-full`) alongside caller overrides (e.g. `w-[110px]`) and plain `clsx`
+ * emits both, leaving the winner to stylesheet order. Merging keeps the last
+ * class the caller passed, which is what every `containerClassName` override
+ * in this codebase assumes.
+ */
 export function cn(...inputs: ClassValue[]): string {
-  return clsx(inputs);
+  return twMerge(clsx(inputs));
 }
 
 /* ------------------------------------------------------------------ dates */

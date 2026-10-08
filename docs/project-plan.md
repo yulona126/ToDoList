@@ -303,6 +303,14 @@ Node v22.18.0 / npm 10.9.3
 | D6 | 前端·功能 | 工作区主页永远显示"暂无任务" | 页面在未聚焦清单时传了 `task_list=null`，而该字面量在契约里表示"仅未分组" | 改为 `task_list: focusedListId ?? undefined`（`parent: null` 保持不变） |
 | D7 | 运维·安全 | `/assets/*` 等路径**丢失**全部安全响应头 | Nginx 的 `add_header` 不跨层级合并：location 一旦自带 `add_header`，server 级的全部失效 | 抽出 `nginx-security-headers.conf`，在每个自带 `add_header` 的 location 内 `include` |
 | D8 | 运维·整洁 | `/assets/*` 返回**两个** `Cache-Control` 头 | `expires` 与 `add_header Cache-Control` 同时生效 | 移除 `expires`，只保留显式 `add_header` |
+| D9 | 前端·样式 | 筛选栏的 6 个下拉全部占满整宽，堆成 7 行 | `cn()` 只是 `clsx`，**不做冲突消解**：组件基类的 `w-full` 与调用方传入的 `w-[110px]` 同时输出，胜负由样式表顺序决定 | `cn()` 接入 `tailwind-merge`，并把筛选栏重构为「1 行常驻 + 仅筛选时 1 行 chip」 |
+| D10 | 前端·会话 | 多标签页同时刷新时，其中一个标签页会被登出 | `ROTATE_REFRESH_TOKENS + BLACKLIST_AFTER_ROTATION`：两个标签页用同一 refresh 并发刷新，先到者使其失效，后到者 401 | 已知限制，列入 V1.1（见 roadmap）；当前失败表现为需重新登录，不丢数据 |
+
+> D9 的教训：`clsx` 只负责拼接，**不负责解决冲突**。任何「组件基类 + 调用方覆盖」
+> 的模式都必须配 `tailwind-merge`，否则覆盖会随机失效。
+>
+> D10 的发现过程：为视觉验证编写无头浏览器脚本时，
+> 每次截图复用同一个 refresh token 都会 401 —— 这恰好复现了多标签页的真实竞争条件。
 
 > D1 与 D7 说明：**"能跑通"不等于"符合契约"**。
 > 若没有 G4 里那条 `anonymous access is rejected` 断言，这个越权缺口会被带到生产。

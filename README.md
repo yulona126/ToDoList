@@ -47,7 +47,7 @@
 
 | 层 | 技术 |
 | --- | --- |
-| 前端 | React 19 · TypeScript 5.9 (strict) · Vite 8 · Tailwind CSS 4 · TanStack Query 5 · React Router 7 · i18next · axios |
+| 前端 | React 19 · TypeScript 5.9 (strict) · Vite 8 · Tailwind CSS 4 · TanStack Query 5 · React Router 7 · i18next · axios · tailwind-merge |
 | 后端 | Python 3.12 · Django 5.2 LTS · DRF 3.18 · SimpleJWT · drf-spectacular · psycopg 3 |
 | 数据 | PostgreSQL 17 |
 | 部署 | Docker Compose · Nginx · Gunicorn · WhiteNoise |
