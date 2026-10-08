@@ -7,6 +7,7 @@ deterministic and costs nothing.
 
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 from typing import Any
 
@@ -32,12 +33,20 @@ BULK_CREATE_URL = "/api/v1/tasks/bulk-create/"
 
 
 def canned(payload: dict[str, Any], **overrides: Any) -> ChatResult:
+    """A *successful* completion by default.
+
+    `raw_content` and `finish_reason` are filled in because the pipeline now
+    distinguishes "the model replied with nothing" from "the model said there
+    are no tasks" — a truncation or an empty body is an error, not an answer.
+    """
     defaults: dict[str, Any] = {
         "prompt_tokens": 95,
         "completion_tokens": 110,
         "cached_tokens": 215,
         "total_tokens": 205,
         "latency_ms": 1840,
+        "raw_content": json.dumps(payload, ensure_ascii=False) or "{}",
+        "finish_reason": "stop",
     }
     defaults.update(overrides)
     return ChatResult(payload=payload, **defaults)
@@ -574,7 +583,8 @@ class AiParseApiTests(APITestCase):
         # T6/T7: deterministic sampling and a hard output cap.
         self.assertEqual(body_a["temperature"], 0)
         self.assertEqual(body_a["response_format"], {"type": "json_object"})
-        self.assertLessEqual(body_a["max_tokens"], 400)
+        self.assertGreaterEqual(body_a["max_tokens"], 900)
+        self.assertLessEqual(body_a["max_tokens"], 2500)
         self.assertFalse(body_a["stream"])
 
     def test_upstream_error_becomes_502_and_is_recorded(self) -> None:
@@ -604,6 +614,118 @@ class AiParseApiTests(APITestCase):
         self.credential.save(update_fields=["is_active"])
         response = self._parse("随便一段自然语言描述")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+# ------------------------------------------------- AI response robustness
+class AiResponseHandlingTests(APITestCase):
+    """Regression for a real outage: every call truncated and returned nothing.
+
+    A 108-character Chinese note needed ~283 completion tokens, but the cap was
+    320 — the model hit `finish_reason=length`, the API returned **empty
+    content**, and the user paid for 320 tokens to receive zero tasks. The
+    pipeline then reported "AI found no tasks", which was actively misleading.
+    """
+
+    def setUp(self) -> None:
+        self.user = User.objects.create_user(
+            email="rb@example.com", username="rb", password="SuperSecret123"
+        )
+        self.client.force_authenticate(self.user)
+        self.workspace = Workspace.objects.create(name="W", owner=self.user)
+        TaskList.objects.create(workspace=self.workspace, name="开发")
+        credential = AiCredential(user=self.user, model="deepseek-flash")
+        credential.set_api_key("sk-test-key-1234567890")
+        credential.save()
+
+    def _patch(self, result: ChatResult | Exception):
+        from apps.assistant import deepseek
+
+        original = deepseek.DeepSeekClient._post
+
+        def fake_post(_self, _body):  # noqa: ANN001
+            if isinstance(result, Exception):
+                raise result
+            return result
+
+        deepseek.DeepSeekClient._post = fake_post
+        self.addCleanup(lambda: setattr(deepseek.DeepSeekClient, "_post", original))
+
+    def _parse(self, text: str = "一段自由文本，需要模型来拆分处理"):
+        return self.client.post(
+            PARSE_URL,
+            {"workspace": self.workspace.id, "text": text, "mode": "ai"},
+            format="json",
+        )
+
+    def test_truncation_is_an_error_not_an_empty_result(self) -> None:
+        self._patch(canned({}, raw_content="", finish_reason="length", completion_tokens=320))
+        response = self._parse()
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertIn("截断", response.data["detail"])
+
+    def test_truncated_call_is_still_recorded_as_spent(self) -> None:
+        self._patch(canned({}, raw_content="", finish_reason="length", completion_tokens=320))
+        self._parse()
+        record = AiUsageRecord.objects.get(user=self.user)
+        self.assertFalse(record.ok)
+        self.assertEqual(record.completion_tokens, 320)
+        self.assertIn("finish_reason=length", record.error)
+
+    def test_empty_content_is_reported_as_such(self) -> None:
+        self._patch(canned({}, raw_content="   ", finish_reason="stop"))
+        response = self._parse()
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertIn("空内容", response.data["detail"])
+
+    def test_unparseable_json_reports_the_raw_reply(self) -> None:
+        self._patch(
+            canned(
+                {"_parse_error": '{"tasks":[{"t":"半截'},
+                raw_content='{"tasks":[{"t":"半截',
+                finish_reason="stop",
+            )
+        )
+        response = self._parse()
+        self.assertEqual(response.status_code, status.HTTP_502_BAD_GATEWAY)
+        self.assertIn("半截", response.data["detail"])
+
+    def test_bare_json_array_is_accepted(self) -> None:
+        """Some replies drop the `{"tasks": ...}` envelope entirely."""
+        from apps.assistant.deepseek import DeepSeekClient
+
+        payload = DeepSeekClient._loads('[{"t":"接入 library 页面"}]')
+        self.assertEqual(payload["tasks"], [{"t": "接入 library 页面"}])
+
+    def test_tasks_as_an_object_is_accepted(self) -> None:
+        from apps.assistant.deepseek import DeepSeekClient
+
+        payload = DeepSeekClient._loads('{"tasks":{"1":{"t":"甲"},"2":{"t":"乙"}}}')
+        self.assertEqual([t["t"] for t in payload["tasks"]], ["甲", "乙"])
+
+    def test_key_aliases_are_accepted(self) -> None:
+        from apps.assistant.deepseek import DeepSeekClient
+
+        for alias in ("items", "data", "result", "task_list"):
+            with self.subTest(alias=alias):
+                payload = DeepSeekClient._loads(f'{{"{alias}":[{{"t":"甲"}}]}}')
+                self.assertEqual(payload["tasks"], [{"t": "甲"}])
+
+    def test_successful_reply_with_no_tasks_shows_the_raw_output(self) -> None:
+        self._patch(
+            canned({"tasks": []}, raw_content='{"tasks":[]}', finish_reason="stop")
+        )
+        response = self._parse()
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        warning = next(w for w in response.data["warnings"] if w["code"] == "no_tasks")
+        self.assertIn('{"tasks":[]}', warning["message"])
+
+    def test_max_tokens_is_generous_enough_for_the_real_case(self) -> None:
+        """108 CJK chars needed 283 completion tokens; the old cap was 320."""
+        from apps.assistant.prompts import estimate_max_tokens
+
+        self.assertGreaterEqual(estimate_max_tokens(108), 1500)
+        self.assertGreaterEqual(estimate_max_tokens(1), 900)
+        self.assertLessEqual(estimate_max_tokens(100_000), 2500)
 
 
 # --------------------------------------------------------- API: credential test

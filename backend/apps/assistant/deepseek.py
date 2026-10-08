@@ -139,14 +139,34 @@ class DeepSeekClient:
 
     @staticmethod
     def _loads(content: str) -> dict[str, Any]:
-        """Parse the model's JSON. Never raises — a bad reply means 'no tasks'."""
+        """Parse the model's JSON tolerantly. Never raises — a bad reply is
+        reported as "no tasks" *plus* the reason (see the caller)."""
         cleaned = strip_code_fence(content)
+        if not cleaned:
+            return {}
         try:
             parsed = json.loads(cleaned)
         except json.JSONDecodeError:
             logger.warning("AI returned unparseable content: %.200s", content)
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
+            return {"_parse_error": cleaned[:500]}
+
+        # A bare array is a common deviation from the requested envelope.
+        if isinstance(parsed, list):
+            return {"tasks": parsed}
+
+        if isinstance(parsed, dict):
+            for key in ("tasks", "items", "data", "result", "task_list"):
+                value = parsed.get(key)
+                if isinstance(value, list):
+                    return {"tasks": value}
+                if isinstance(value, dict):
+                    # {"tasks": {"1": {...}, "2": {...}}}
+                    return {
+                        "tasks": [v for v in value.values() if isinstance(v, dict)]
+                    }
+            return parsed
+
+        return {} if parsed is None else {"tasks": parsed}
 
     def chat_json(
         self,

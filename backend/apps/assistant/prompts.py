@@ -77,9 +77,23 @@ def strip_code_fence(content: str) -> str:
 
 
 def estimate_max_tokens(text_length: int) -> int:
-    """T7: hard cap scaled by input size, so a confused model cannot run away.
+    """Output ceiling. Deliberately generous.
 
-    Roughly 60 tokens per expected task plus a small floor, bounded at 400.
+    ``max_tokens`` is a **ceiling, not a cost** — you are billed only for what
+    the model actually generates. Setting it too low is the worst of both
+    worlds: the call is billed in full and the result is worthless.
+
+    Measured against the real API with a 108-character Chinese note:
+
+    ============  ==================  =====================
+    max_tokens    finish_reason       content
+    ============  ==================  =====================
+    320           ``length``          *empty* (320 billed)
+    1500          ``stop``            3 tasks in 283 tokens
+    ============  ==================  =====================
+
+    So the old "60 tokens per task" estimate was not just tight, it was 100%
+    fatal: every call truncated and returned nothing.
     """
-    estimated_tasks = max(1, min(8, text_length // 25))
-    return max(120, min(400, 80 + 60 * estimated_tasks))
+    estimated_tasks = max(1, min(8, text_length // 25 + 1))
+    return max(900, min(2500, 500 + 250 * estimated_tasks))

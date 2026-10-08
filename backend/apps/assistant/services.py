@@ -330,6 +330,25 @@ def parse_text(
     return _local_response(user, workspace, local, default_list_id, default_task_type)
 
 
+def _record_failed_call(
+    user: Any, credential: AiCredential, result: Any, message: str
+) -> None:
+    """Book a call that reached the provider, burned tokens, and produced nothing."""
+    record_usage(
+        user,
+        AiUsageRecord.Kind.PARSE,
+        model=credential.model,
+        ok=False,
+        error=f"{message} | finish_reason={result.finish_reason} "
+        f"completion_tokens={result.completion_tokens}",
+        prompt_tokens=result.prompt_tokens,
+        completion_tokens=result.completion_tokens,
+        cached_tokens=result.cached_tokens,
+        total_tokens=result.total_tokens,
+        latency_ms=result.latency_ms,
+    )
+
+
 def _ai_response(
     user: Any,
     workspace: Workspace,
@@ -368,6 +387,27 @@ def _ai_response(
         record_usage(user, AiUsageRecord.Kind.PARSE, model=credential.model, ok=False, error=str(exc))
         raise
 
+    # A truncated or empty completion still bills in full, so it must be
+    # reported as a failure — never as "the model found no tasks".
+    if result.finish_reason == "length":
+        message = (
+            "AI 输出被截断（max_tokens 用尽），本次没有可用结果。"
+            "请重试；若反复出现请在设置里换一个模型。"
+        )
+        _record_failed_call(user, credential, result, message)
+        raise AiError(message)
+
+    if not result.raw_content.strip():
+        message = "AI 返回了空内容，本次没有可用结果。请重试。"
+        _record_failed_call(user, credential, result, message)
+        raise AiError(message)
+
+    if result.payload.get("_parse_error") is not None:
+        snippet = str(result.payload["_parse_error"])[:200]
+        message = f"AI 返回的内容不是合法 JSON，无法解析。原始回复：{snippet}"
+        _record_failed_call(user, credential, result, message)
+        raise AiError(message)
+
     drafts, warnings = normalize_drafts(
         workspace,
         result.payload.get("tasks"),
@@ -390,9 +430,19 @@ def _ai_response(
         latency_ms=result.latency_ms,
     )
 
-    if not drafts and not warnings:
+    if not drafts:
+        # Surface what actually came back: without this the user just sees
+        # "no tasks" and neither of us can tell why.
+        snippet = " ".join(result.raw_content.split())[:200]
         warnings.append(
-            {"code": "no_tasks", "message": "AI 没有从这段文字里识别出任务。"}
+            {
+                "code": "no_tasks",
+                "message": (
+                    f"AI 没有返回可用的任务。原始回复：{snippet}"
+                    if snippet
+                    else "AI 没有返回可用的任务。"
+                ),
+            }
         )
 
     return {
