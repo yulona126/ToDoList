@@ -253,3 +253,73 @@ ToDoList/
 | V1.4 | 离线写入 | IndexedDB 队列 + 幂等键 + 冲突策略 | 4 人日 |
 | V1.5 | 检索与通知 | `pg_trgm` 全文搜索、Web Push | 4 人日 |
 | V2.0 | AI 协同 | 会议纪要转任务、自动拆解、每日上下文摘要 | 8 人日 |
+
+---
+
+## 10. 实际执行记录（验收证据）
+
+### 10.1 环境
+
+```
+macOS (darwin) · Docker 29.8.2 / Compose v5.5.1
+Node v22.18.0 / npm 10.9.3
+容器内：Python 3.12-slim · PostgreSQL 17-alpine · nginx 1.29-alpine
+```
+
+### 10.2 门禁执行结果
+
+| 门禁 | 命令 | 结果 |
+| --- | --- | --- |
+| G1 | `docker compose config --quiet` | ✅ 通过 |
+| G2 | `manage.py check` | ✅ `System check identified no issues (0 silenced)` |
+| G3 | `manage.py makemigrations --check --dry-run` | ✅ `No changes detected` |
+| G4 | `manage.py test` | ✅ **Ran 75 tests — OK** |
+| G5 | `npm run typecheck` | ✅ 0 error |
+| G6 | `npm run build` | ✅ 产出 `dist/`，含 `sw.js`、`manifest.webmanifest`，precache 15 项 |
+| G7 | `./scripts/e2e.sh` | ✅ **passed 51 / failed 0** |
+
+补充验证（超出基础门禁）：
+
+- G4 额外在**已构建镜像内、无源码挂载**的条件下重跑 → 仍然 75 项全绿，
+  证明交付物本身（而非开发目录）是可用的。
+- 通过 Nginx 实测：`/assets/*` 为 `immutable, max-age=31536000`；
+  `sw.js` / `index.html` 为 `no-cache, no-store`；`manifest.webmanifest`
+  为 `application/manifest+json`；四个安全响应头在全部路径上恰好出现一次。
+- SPA 深链 `/w/123`、`/settings` 均回退到 `index.html`（HTTP 200）。
+- Django admin 静态资源经 Nginx `/static/` 别名直出（HTTP 200），未回源 gunicorn。
+- 服务启动顺序实测：`db(healthy) → backend(healthy) → frontend(healthy)`。
+
+### 10.3 验收过程中发现并修复的缺陷
+
+这些是**在执行上述门禁时才暴露出来**的真实问题，记录以备回溯：
+
+| # | 层 | 现象 | 根因 | 修复 |
+| --- | --- | --- | --- | --- |
+| D1 | 后端·安全 | 匿名请求 `GET /workspaces/` 返回 **200** 而非 401 | 视图集用了自定义权限类，**覆盖**掉了 DRF 默认的 `IsAuthenticated`，而自定义类只实现了 `has_object_permission` | 改为 `[IsAuthenticated, IsObjectOwnerOrMember]` |
+| D2 | 后端·契约 | `GET /workspaces/` 返回了已归档工作区 | `django-filter` 对**缺失**的参数直接跳过过滤，文档写的默认值没生效 | 新增 `DefaultArchivedFilterMixin`，在 `__init__` 注入默认值 |
+| D3 | 后端·功能 | 修改密码抛 `AttributeError: 'PasswordChangeSerializer' object has no attribute '_db'` | 在普通 `Serializer`（非 `ModelSerializer`）上调用了 `self._db` | 改为 `user.save(update_fields=["password"])` |
+| D4 | 后端·功能 | `DEV@example.com` 无法登录已注册的 `dev@example.com` | `ModelBackend` 通过 `get_by_natural_key` 精确匹配 `USERNAME_FIELD` | 覆写 `UserManager.get_by_natural_key` 使用 `__iexact` |
+| D5 | 后端·模型 | `makemigrations` 直接报 `fields.E335` | `WorkspaceMember` 上有两个指向 `User` 的外键，M2M through 无法自动判定；且反向名 `members` 与 M2M 字段名冲突 | 加 `through_fields=("workspace","user")`，反向名改为 `memberships` |
+| D6 | 前端·功能 | 工作区主页永远显示"暂无任务" | 页面在未聚焦清单时传了 `task_list=null`，而该字面量在契约里表示"仅未分组" | 改为 `task_list: focusedListId ?? undefined`（`parent: null` 保持不变） |
+| D7 | 运维·安全 | `/assets/*` 等路径**丢失**全部安全响应头 | Nginx 的 `add_header` 不跨层级合并：location 一旦自带 `add_header`，server 级的全部失效 | 抽出 `nginx-security-headers.conf`，在每个自带 `add_header` 的 location 内 `include` |
+| D8 | 运维·整洁 | `/assets/*` 返回**两个** `Cache-Control` 头 | `expires` 与 `add_header Cache-Control` 同时生效 | 移除 `expires`，只保留显式 `add_header` |
+
+> D1 与 D7 说明：**"能跑通"不等于"符合契约"**。
+> 若没有 G4 里那条 `anonymous access is rejected` 断言，这个越权缺口会被带到生产。
+
+### 10.4 与计划的偏差
+
+| 项 | 计划 | 实际 | 原因 |
+| --- | --- | --- | --- |
+| 前端语言 | 中英双语 | ✅ 一致 | 232 词条 × 2，通过 `TranslationSchema` 在编译期强制对齐 |
+| PWA 离线 | 可读 + 写失败提示 | ✅ 一致 | 未做离线写队列（V1 非目标） |
+| 图标产物 | 单份 | 曾产生双份，已收敛为 `public/icons/` 单份 | 生成脚本显式支持多目录；收敛后 precache 由 19 项降为 15 项 |
+| 前端测试 | 未规划单测 | 仅 `tsc` + 构建 + 脚本化 i18n 审计 | 前端单测（Vitest）列入 V1.1；当前以 E2E 覆盖关键路径 |
+| 前端包体 | 未设预算 | 单个 chunk 513 KB（gzip 160 KB），构建有告警 | 未做路由级 code splitting；列入 V1.1 |
+
+### 10.5 结论
+
+G1–G7 七道门禁全部通过，§7.1 / §7.2 / §7.3 的验收清单逐项确认，
+`docs/roadmap.md` 中标注"❌ 不需要迁移"的演进项（共享工作区、看板拖拽）
+其数据结构与查询边界已在 V1 中就位。
+

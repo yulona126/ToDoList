@@ -16,6 +16,8 @@ V1 的取舍原则：**先把数据模型和查询边界做对，功能可以慢
 | CSP 收紧 | Nginx 下发 `Content-Security-Policy`，去掉 `unsafe-inline` | ❌ |
 | 审计日志 | 记录登录失败、密码修改、工作区删除事件 | ⚠️ 新增表 |
 | 依赖漏洞扫描 | CI 中加 `pip-audit` + `npm audit` | ❌ |
+| 前端单元测试 | 引入 Vitest + Testing Library，覆盖 hooks 与乐观更新回滚 | ❌ |
+| 路由级代码分割 | `React.lazy` 拆 Settings/NotFound，消除 500 KB chunk 告警 | ❌ |
 
 ---
 

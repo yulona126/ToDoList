@@ -121,7 +121,7 @@ ToDoList/
 │       ├── i18n/               中文 · English
 │       └── types/              与 API 契约对应的 DTO
 └── scripts/
-    ├── e2e.sh                  端到端验收脚本（40+ 断言）
+    ├── e2e.sh                  端到端验收脚本（51 条断言，全绿）
     ├── backup.sh               数据库备份
     └── restore.sh              数据库还原
 ```
