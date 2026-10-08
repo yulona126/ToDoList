@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AiSettingsSection } from '../components/ai/AiSettingsSection';
 import { AlertBanner } from '../components/auth/AlertBanner';
+import { ApiTokensSection } from '../components/settings/ApiTokensSection';
 import { Button } from '../components/ui/Button';
 import { Icon } from '../components/ui/Icon';
 import { Input } from '../components/ui/Input';
@@ -253,6 +254,8 @@ export function SettingsPage() {
       </Section>
 
       <AiSettingsSection />
+
+      <ApiTokensSection />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import User
+from .models import ApiToken, User
 
 
 @admin.register(User)
@@ -27,3 +27,15 @@ class UserAdmin(BaseUserAdmin):
             },
         ),
     )
+
+
+@admin.register(ApiToken)
+class ApiTokenAdmin(admin.ModelAdmin):
+    list_display = ("name", "user", "prefix", "is_active", "last_used_at", "created_at")
+    list_filter = ("revoked_at",)
+    search_fields = ("name", "prefix", "user__email")
+    readonly_fields = ("prefix", "key_hash", "last_used_at", "created_at", "updated_at")
+
+    def has_add_permission(self, request) -> bool:  # noqa: ANN001
+        # Tokens must be issued through the API so the secret is shown once.
+        return False

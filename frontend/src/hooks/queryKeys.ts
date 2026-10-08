@@ -40,6 +40,11 @@ export const queryKeys = {
     all: ['tags'] as const,
     list: (workspaceId: number) => ['tags', 'list', workspaceId] as const,
   },
+  tokens: {
+    /** Prefix that matches every cached token query (list invalidation). */
+    all: ['auth', 'tokens'] as const,
+    list: ['auth', 'tokens', 'list'] as const,
+  },
   ai: {
     credential: ['ai', 'credential'] as const,
     usage: (days: number) => ['ai', 'usage', days] as const,

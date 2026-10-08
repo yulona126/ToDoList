@@ -7,6 +7,7 @@ from typing import Any
 from django.contrib.auth import get_user_model
 from drf_spectacular.utils import extend_schema, inline_serializer
 from rest_framework import generics, serializers as drf_serializers, status
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -15,7 +16,10 @@ from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 
+from .models import ApiToken
 from .serializers import (
+    ApiTokenCreateSerializer,
+    ApiTokenSerializer,
     LoginSerializer,
     PasswordChangeSerializer,
     ProfileUpdateSerializer,
@@ -119,4 +123,62 @@ class PasswordChangeView(APIView):
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ------------------------------------------------------------ API tokens
+
+
+@extend_schema(responses={200: ApiTokenSerializer(many=True)})
+class ApiTokenListCreateView(APIView):
+    """`GET` list / `POST` issue a personal access token.
+
+    The plaintext is returned **once**, in the `token` field of the create
+    response. It is stored only as a SHA-256 digest, so it can never be
+    retrieved again — revoke and reissue instead.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request: Request) -> Response:
+        queryset = ApiToken.objects.filter(user=request.user)
+        return Response(
+            {
+                "count": queryset.count(),
+                "results": ApiTokenSerializer(queryset, many=True).data,
+            }
+        )
+
+    @extend_schema(
+        request=ApiTokenCreateSerializer,
+        responses={201: ApiTokenSerializer},
+        description="Issue a token. The `token` field is shown only in this response.",
+    )
+    def post(self, request: Request) -> Response:
+        serializer = ApiTokenCreateSerializer(
+            data=request.data, context={"request": request}
+        )
+        serializer.is_valid(raise_exception=True)
+        token, raw = serializer.save()
+        return Response(
+            {**ApiTokenSerializer(token).data, "token": raw},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+@extend_schema(responses={204: None})
+class ApiTokenDetailView(APIView):
+    """`DELETE` revokes a token. The row is kept so `last_used_at` stays auditable."""
+
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request: Request, pk: int) -> Response:
+        from django.utils import timezone as _tz
+
+        token = ApiToken.objects.filter(user=request.user, pk=pk).first()
+        if token is None:
+            raise NotFound("API Token 不存在。")
+        if token.revoked_at is None:
+            token.revoked_at = _tz.now()
+            token.save(update_fields=["revoked_at", "updated_at"])
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -473,3 +473,46 @@ export interface BulkCreateResult {
   created: number;
   tasks: Task[];
 }
+
+/* ------------------------------------------- §1 auth — API tokens (PAT) */
+
+/**
+ * One row of `GET /auth/tokens/` (api.md §1).
+ *
+ * The plaintext secret is *never* part of this shape: the list endpoint only
+ * returns a printable `prefix`, and the full value exists solely in
+ * {@link ApiTokenCreateResult}.
+ */
+export interface ApiToken {
+  id: ID;
+  name: string;
+  /** First characters of the secret, e.g. `tdl_ExAmPlE000` — safe to display. */
+  prefix: string;
+  is_active: boolean;
+  /** ISO 8601 UTC, or `null` when the token has never been used. */
+  last_used_at: string | null;
+  /** ISO 8601 UTC, or `null` for a token that never expires. */
+  expires_at: string | null;
+  /** ISO 8601 UTC */
+  created_at: string;
+}
+
+/** `POST /auth/tokens/` request body; `null`/omitted means "never expires". */
+export interface ApiTokenCreatePayload {
+  name: string;
+  expires_in_days?: number | null;
+}
+
+/**
+ * `POST /auth/tokens/` response — the **only** payload that carries the
+ * plaintext `token`. It is shown once and cannot be retrieved afterwards.
+ */
+export interface ApiTokenCreateResult extends ApiToken {
+  token: string;
+}
+
+/** `GET /auth/tokens/` envelope. */
+export interface ApiTokenListResult {
+  count: number;
+  results: ApiToken[];
+}

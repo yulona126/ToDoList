@@ -33,6 +33,11 @@ export {
   useBulkCreateTasks,
 } from './useAi';
 export {
+  useApiTokens,
+  useCreateApiToken,
+  useRevokeApiToken,
+} from './useApiTokens';
+export {
   useKeyboardShortcuts,
   isEditableTarget,
   type KeyboardShortcutOptions,

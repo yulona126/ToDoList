@@ -85,6 +85,23 @@
 | 领域层 | Django Model / Manager | 数据约束、owner 作用域、软删除与排序 | 不感知 HTTP |
 | 基础设施 | Postgres / Nginx / Docker | 持久化、静态托管、编排 | — |
 
+**外部集成层：MCP / CLI（`mcp/`）**
+MCP server 是一个**独立的 stdio 进程**，只通过 REST API 访问数据，**不连数据库**：
+
+```
+Cursor ──stdio──► todolist-mcp ──HTTP + Bearer tdl_…──► DRF ──► Postgres
+```
+
+这样权限判断、用户隔离、字段校验、状态机（如 `completed_at`）与网页端
+**是同一份实现** —— 外部工具不可能绕过业务规则。
+
+认证用长期 **Personal Access Token**（`apps/accounts/models.py::ApiToken`）：
+JWT 的 access 只活 60 分钟、refresh 每次轮换并拉黑，浏览器外不可用。
+PAT 只存 SHA-256 摘要、可撤销、`Authorization: Bearer tdl_…`。
+DRF 认证器按序尝试，非 `tdl_` 前缀交回 JWT，**网页端零影响**。
+
+详见 [mcp-and-skills.md](mcp-and-skills.md)。
+
 **可选旁路：AI 助手（`apps/assistant/`）**
 不参与主流程——它只**产出草稿**，落库仍走 `apps/todos` 的正规入口（`bulk-create`）。
 关掉它、Key 失效、上游宕机，都不影响手工录入。分层上：

@@ -217,3 +217,153 @@ class SchemaTests(APITestCase):
         """Guards against schema-breaking changes in serializers."""
         response = self.client.get(reverse("schema"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+# ------------------------------------------------------------- API tokens
+class ApiTokenTests(APITestCase):
+    """Personal access tokens power the CLI / MCP integrations (docs/mcp-and-skills.md)."""
+
+    TOKENS_URL = "/api/v1/auth/tokens/"
+
+    def setUp(self) -> None:
+        from apps.accounts.models import ApiToken
+
+        self.ApiToken = ApiToken
+        self.user = User.objects.create_user(
+            email="dev@example.com", username="dev", password="SuperSecret123"
+        )
+        self.client.force_authenticate(self.user)
+
+    def _issue(self, **extra):
+        return self.client.post(
+            self.TOKENS_URL, {"name": "cursor-mcp", **extra}, format="json"
+        )
+
+    def test_issue_returns_the_secret_exactly_once(self) -> None:
+        response = self._issue()
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        raw = response.data["token"]
+        self.assertTrue(raw.startswith("tdl_"))
+        self.assertEqual(response.data["name"], "cursor-mcp")
+
+        # Listing must not leak it again.
+        listing = self.client.get(self.TOKENS_URL)
+        self.assertEqual(listing.data["count"], 1)
+        self.assertNotIn("token", listing.data["results"][0])
+        self.assertEqual(listing.data["results"][0]["prefix"], raw[:12])
+
+    def test_the_secret_is_not_stored_in_plaintext(self) -> None:
+        raw = self._issue().data["token"]
+        row = self.ApiToken.objects.get()
+        self.assertNotEqual(row.key_hash, raw)
+        self.assertNotIn(raw, row.key_hash)
+        self.assertEqual(len(row.key_hash), 64)  # sha256 hex
+
+    def test_bearer_token_authenticates(self) -> None:
+        raw = self._issue().data["token"]
+        self.client.force_authenticate(None)
+        response = self.client.get(ME_URL, HTTP_AUTHORIZATION=f"Bearer {raw}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["email"], "dev@example.com")
+
+    def test_token_keyword_also_works(self) -> None:
+        raw = self._issue().data["token"]
+        self.client.force_authenticate(None)
+        response = self.client.get(ME_URL, HTTP_AUTHORIZATION=f"Token {raw}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_last_used_at_is_recorded(self) -> None:
+        raw = self._issue().data["token"]
+        self.client.force_authenticate(None)
+        self.client.get(ME_URL, HTTP_AUTHORIZATION=f"Bearer {raw}")
+        self.assertIsNotNone(self.ApiToken.objects.get().last_used_at)
+
+    def test_revoked_token_is_rejected(self) -> None:
+        created = self._issue()
+        raw, pk = created.data["token"], created.data["id"]
+        self.client.force_authenticate(self.user)
+        self.assertEqual(
+            self.client.delete(f"{self.TOKENS_URL}{pk}/").status_code,
+            status.HTTP_204_NO_CONTENT,
+        )
+        self.client.force_authenticate(None)
+        response = self.client.get(ME_URL, HTTP_AUTHORIZATION=f"Bearer {raw}")
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_expired_token_is_rejected(self) -> None:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        raw = self._issue(expires_in_days=1).data["token"]
+        row = self.ApiToken.objects.get()
+        row.expires_at = timezone.now() - timedelta(minutes=1)
+        row.save(update_fields=["expires_at"])
+
+        self.client.force_authenticate(None)
+        self.assertEqual(
+            self.client.get(ME_URL, HTTP_AUTHORIZATION=f"Bearer {raw}").status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+    def test_garbage_token_is_rejected(self) -> None:
+        self.client.force_authenticate(None)
+        for header in ("Bearer tdl_not-a-real-token", "Bearer tdl_"):
+            with self.subTest(header=header):
+                self.assertEqual(
+                    self.client.get(ME_URL, HTTP_AUTHORIZATION=header).status_code,
+                    status.HTTP_401_UNAUTHORIZED,
+                )
+
+    def test_tokens_are_scoped_to_their_owner(self) -> None:
+        raw = self._issue().data["token"]
+        other_workspace = self.client.post(
+            "/api/v1/workspaces/", {"name": "Mine"}, format="json"
+        ).data
+
+        stranger = User.objects.create_user(
+            email="other@example.com", username="other", password="SuperSecret123"
+        )
+        self.client.force_authenticate(stranger)
+        self.assertEqual(self.client.get(self.TOKENS_URL).data["count"], 0)
+        # A stranger's token must not expose the first user's data.
+        theirs = self.client.post(
+            self.TOKENS_URL, {"name": "other"}, format="json"
+        ).data["token"]
+        self.client.force_authenticate(None)
+        listing = self.client.get(
+            "/api/v1/workspaces/", HTTP_AUTHORIZATION=f"Bearer {theirs}"
+        )
+        self.assertEqual(listing.data["count"], 0)
+        del other_workspace
+
+    def test_another_users_token_cannot_be_revoked(self) -> None:
+        created = self._issue()
+        stranger = User.objects.create_user(
+            email="other@example.com", username="other", password="SuperSecret123"
+        )
+        self.client.force_authenticate(stranger)
+        self.assertEqual(
+            self.client.delete(f"{self.TOKENS_URL}{created.data['id']}/").status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+
+    def test_jwt_still_works_alongside_tokens(self) -> None:
+        from apps.accounts.views import _token_pair
+
+        self.client.force_authenticate(None)
+        access = _token_pair(self.user)["access"]
+        response = self.client.get(ME_URL, HTTP_AUTHORIZATION=f"Bearer {access}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_token_management_requires_authentication(self) -> None:
+        self.client.force_authenticate(None)
+        self.assertEqual(
+            self.client.get(self.TOKENS_URL).status_code, status.HTTP_401_UNAUTHORIZED
+        )
+
+    def test_blank_name_is_rejected(self) -> None:
+        self.assertEqual(
+            self.client.post(self.TOKENS_URL, {"name": ""}, format="json").status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )

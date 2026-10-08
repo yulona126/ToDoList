@@ -44,6 +44,15 @@
 - 每日 token 配额兜底，超限直接拒绝
 - 详见 [AI 方案](docs/ai-assistant.md)
 
+**在 Cursor 里用（MCP + Skill）**
+
+- 说一句「把这个版本的待办整理进开发计划」，Cursor 自己拉取工作区并写进计划文档
+- 提供 4 个 MCP 工具：列出工作区 / 拉取任务（紧凑 Markdown）/ 批量建任务 / 批量改状态
+- 附带 `todolist-plan` Agent Skill，让 Cursor 知道**什么时候**该调用
+- 一条命令装进任意项目：`./scripts/install-cursor-integration.sh /path/to/project`
+- 用长期 API Token 认证（SHA-256 存储、可随时撤销、明文只显示一次）
+- 详见 [Cursor 集成](docs/mcp-and-skills.md)
+
 **体验**
 
 - 中文 / English 一键切换，明暗主题，全站持久化
@@ -114,6 +123,7 @@ ToDoList/
 │   ├── api.md                  REST API 契约（前后端唯一事实来源）
 │   ├── design-system.md        黑白极简设计系统
 │   ├── ai-assistant.md         AI 任务录入方案（模型、提示词、token 经济）
+│   ├── mcp-and-skills.md       Cursor 集成（MCP server + Agent Skill）
 │   ├── deployment.md           部署与运维手册
 │   ├── development.md          本地开发指南
 │   └── roadmap.md              演进路线 V1.1 → V2.0
@@ -170,6 +180,7 @@ make build-frontend
 | 接口怎么调？字段叫什么？ | [API 契约](docs/api.md) |
 | 为什么是黑白？组件长什么样？ | [设计系统](docs/design-system.md) |
 | AI 怎么接？怎么省 token？ | [AI 方案](docs/ai-assistant.md) |
+| 怎么在 Cursor 里拉取/写回任务？ | [Cursor 集成](docs/mcp-and-skills.md) |
 | 怎么部署？怎么做备份？出问题怎么办？ | [部署手册](docs/deployment.md) |
 | 怎么本地改代码？ | [开发指南](docs/development.md) |
 | 后面还会做什么？ | [演进路线](docs/roadmap.md) |

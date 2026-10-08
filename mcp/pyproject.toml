@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "todolist-mcp"
+version = "1.0.0"
+description = "Model Context Protocol server that exposes a ToDoList workspace to Cursor"
+requires-python = ">=3.10"
+dependencies = ["mcp==2.3.0"]
+
+[project.scripts]
+todolist-mcp = "todolist_mcp.__main__:main"
+
+[tool.setuptools]
+packages = ["todolist_mcp"]

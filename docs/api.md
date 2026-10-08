@@ -94,6 +94,31 @@ MemberRole      : owner | admin | member | viewer
 
 可改：`username`、`display_name`（`email` 不可改）
 
+### API Tokens `/auth/tokens` · 需认证
+
+给 CLI / MCP / CI 用的**长期**凭据（JWT 的 access 只有 60 分钟，浏览器外不可用）。
+详见 [mcp-and-skills.md](mcp-and-skills.md)。
+
+| 方法 | 路径 | 说明 |
+| --- | --- | --- |
+| `GET` | `/auth/tokens/` | 列出自己的 token（**永不返回明文**，只有 `prefix`） |
+| `POST` | `/auth/tokens/` | 签发 → `{id, name, prefix, is_active, expires_at, created_at, token}`；**`token` 只在此响应出现一次** |
+| `DELETE` | `/auth/tokens/{id}/` | 撤销（保留行以便审计 `last_used_at`） |
+
+```jsonc
+// POST 请求体
+{ "name": "cursor-mcp", "expires_in_days": null }   // null / 省略 = 永久
+// 201
+{ "id": 1, "name": "cursor-mcp", "prefix": "tdl_ExAmPlE000", "is_active": true,
+  "last_used_at": null, "expires_at": null, "created_at": "…",
+  "token": "tdl_……" }
+```
+
+**认证**：`Authorization: Bearer tdl_…`（也接受 `Token tdl_…`）。
+
+认证器按序尝试：不是 `tdl_` 前缀就交给 JWT，因此**网页端不受任何影响**。
+服务端只存 SHA-256 摘要，明文无法找回。
+
 ### POST `/auth/password/change/` · 需认证
 
 ```jsonc

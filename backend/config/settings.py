@@ -202,7 +202,10 @@ STORAGES = {
 # Django REST Framework
 # ---------------------------------------------------------------------------
 REST_FRAMEWORK = {
+    # Personal access tokens are tried first; the class returns None for
+    # anything that is not a `tdl_…` token, so JWTs fall through untouched.
     "DEFAULT_AUTHENTICATION_CLASSES": (
+        "apps.accounts.authentication.ApiTokenAuthentication",
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),

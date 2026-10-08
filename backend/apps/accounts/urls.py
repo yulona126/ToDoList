@@ -5,7 +5,15 @@ from __future__ import annotations
 from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import LoginView, LogoutView, MeView, PasswordChangeView, RegisterView
+from .views import (
+    ApiTokenDetailView,
+    ApiTokenListCreateView,
+    LoginView,
+    LogoutView,
+    MeView,
+    PasswordChangeView,
+    RegisterView,
+)
 
 app_name = "accounts"
 
@@ -16,4 +24,7 @@ urlpatterns = [
     path("logout/", LogoutView.as_view(), name="logout"),
     path("me/", MeView.as_view(), name="me"),
     path("password/change/", PasswordChangeView.as_view(), name="password-change"),
+    # Long-lived tokens for CLI / MCP / CI (docs/mcp-and-skills.md)
+    path("tokens/", ApiTokenListCreateView.as_view(), name="token-list"),
+    path("tokens/<int:pk>/", ApiTokenDetailView.as_view(), name="token-detail"),
 ]

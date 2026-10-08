@@ -891,6 +891,65 @@ class BulkCreateApiTests(APITestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
+    def test_accepts_a_top_level_workspace_default(self) -> None:
+        """A caller creating many tasks in one workspace should not have to
+        repeat `workspace` on every item."""
+        response = self.client.post(
+            BULK_CREATE_URL,
+            {
+                "workspace": self.workspace.id,
+                "tasks": [
+                    {"title": "甲"},
+                    {"title": "乙", "task_list": self.task_list.id},
+                ],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data["created"], 2)
+
+    def test_rejects_a_task_list_from_another_workspace(self) -> None:
+        """Regression, reported by the MCP integration: an unknown list id used to
+        be dropped silently and the task filed under 未分组, so the caller
+        believed it had been routed correctly."""
+        other = User.objects.create_user(
+            email="o@example.com", username="o", password="SuperSecret123"
+        )
+        theirs = Workspace.objects.create(name="T", owner=other)
+        foreign_list = TaskList.objects.create(workspace=theirs, name="秘密")
+
+        response = self.client.post(
+            BULK_CREATE_URL,
+            {
+                "tasks": [
+                    {"workspace": self.workspace.id, "title": "正常"},
+                    {
+                        "workspace": self.workspace.id,
+                        "task_list": foreign_list.id,
+                        "title": "越界",
+                    },
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("第 2 条", response.data["detail"])
+        # Nothing from the batch is persisted.
+        self.assertFalse(Task.objects.filter(workspace=self.workspace).exists())
+
+    def test_rejects_an_unknown_task_list_id(self) -> None:
+        response = self.client.post(
+            BULK_CREATE_URL,
+            {
+                "tasks": [
+                    {"workspace": self.workspace.id, "task_list": 999999, "title": "x"}
+                ]
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(Task.objects.filter(workspace=self.workspace).exists())
+
 
 # --------------------------------------------------------------- API: usage
 class UsageApiTests(APITestCase):

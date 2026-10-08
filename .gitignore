@@ -37,3 +37,14 @@ media/
 *.dump
 *.sql.gz
 backups/
+
+# Temporary dev credentials for MCP integration testing
+.mcp-dev-token
+
+# --- MCP / Cursor integration (local only) ----------------------------------
+# Throwaway venv used while developing the MCP server (mcp/.venv is covered by
+# the `.venv/` rule above).
+.mcp-venv/
+# Local token files that Cursor's mcp.json may reference via `envFile`.
+.mcp.env
+*.mcp.env

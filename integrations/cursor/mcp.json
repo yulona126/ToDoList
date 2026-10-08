@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "todolist": {
+      "command": "/Users/yulon/code/ToDoList/mcp/.venv/bin/python",
+      "args": ["-m", "todolist_mcp"],
+      "env": {
+        "PYTHONPATH": "/Users/yulon/code/ToDoList/mcp",
+        "TODOLIST_API_URL": "http://localhost:8001/api/v1"
+      },
+      "envFile": "/Users/yulon/.config/todolist/mcp.env"
+    }
+  }
+}

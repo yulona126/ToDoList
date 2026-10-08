@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from django.contrib.auth import get_user_model
+
+from .models import ApiToken
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
 from rest_framework import serializers
@@ -124,3 +126,43 @@ class PasswordChangeSerializer(serializers.Serializer[Any]):
         user.set_password(self.validated_data["new_password"])
         user.save(update_fields=["password"])
         return user
+
+
+# --------------------------------------------------------------------- tokens
+
+
+class ApiTokenSerializer(serializers.ModelSerializer["ApiToken"]):
+    """Read model for a personal access token. Never exposes the secret."""
+
+    is_active = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = ApiToken
+        fields = (
+            "id",
+            "name",
+            "prefix",
+            "is_active",
+            "last_used_at",
+            "expires_at",
+            "created_at",
+        )
+        read_only_fields = fields
+
+
+class ApiTokenCreateSerializer(serializers.Serializer[Any]):
+    name = serializers.CharField(max_length=60, allow_blank=False)
+    expires_in_days = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1, max_value=3650
+    )
+
+    def create(self, validated_data: dict[str, Any]) -> tuple[ApiToken, str]:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        days = validated_data.get("expires_in_days")
+        expires_at = timezone.now() + timedelta(days=days) if days else None
+        return ApiToken.issue(
+            self.context["request"].user, validated_data["name"], expires_at=expires_at
+        )

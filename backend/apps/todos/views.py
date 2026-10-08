@@ -295,17 +295,24 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        by_workspace: dict[int, list[dict[str, Any]]] = {}
+        # A top-level `workspace` is accepted as a default so callers do not have
+        # to repeat it on every item.
+        default_workspace = request.data.get("workspace")
+
+        by_workspace: dict[int, list[tuple[int, dict[str, Any]]]] = {}
         for index, item in enumerate(items):
             if not isinstance(item, dict):
                 return Response(
                     {"detail": f"第 {index + 1} 条格式不正确。", "errors": {}},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            workspace_id = item.get("workspace")
+            workspace_id = item.get("workspace", default_workspace)
             if not isinstance(workspace_id, int):
                 return Response(
-                    {"detail": f"第 {index + 1} 条缺少 workspace。", "errors": {}},
+                    {
+                        "detail": f"第 {index + 1} 条缺少 workspace（也可在顶层传一次）。",
+                        "errors": {},
+                    },
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             title = str(item.get("title") or "").strip()
@@ -314,10 +321,12 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
                     {"detail": f"第 {index + 1} 条缺少标题。", "errors": {}},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            by_workspace.setdefault(workspace_id, []).append({**item, "title": title})
+            by_workspace.setdefault(workspace_id, []).append(
+                (index, {**item, "title": title})
+            )
 
         created: list[Task] = []
-        for workspace_id, rows in by_workspace.items():
+        for workspace_id, indexed_rows in by_workspace.items():
             workspace = (
                 Workspace.objects.for_user(request.user).filter(pk=workspace_id).first()
             )
@@ -326,7 +335,33 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
                     {"detail": f"工作区 {workspace_id} 不存在。", "errors": {}},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            created.extend(bulk_create_tasks(request.user, workspace, rows))
+
+            # Validate `task_list` up front. `bulk_create_tasks` would otherwise
+            # fall back to the inbox when a list id is unknown or belongs to
+            # another workspace — the task would silently land in 未分组 and the
+            # caller would believe it had been filed correctly.
+            valid_list_ids = set(workspace.lists.values_list("id", flat=True))
+            for index, row in indexed_rows:
+                list_id = row.get("task_list")
+                if list_id is None:
+                    continue
+                if not isinstance(list_id, int) or list_id not in valid_list_ids:
+                    return Response(
+                        {
+                            "detail": (
+                                f"第 {index + 1} 条的清单 {list_id!r} 不属于工作区 "
+                                f"{workspace_id}。"
+                            ),
+                            "errors": {"tasks": [f"第 {index + 1} 条 task_list 无效。"]},
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+            created.extend(
+                bulk_create_tasks(
+                    request.user, workspace, [row for _, row in indexed_rows]
+                )
+            )
 
         if created:
             self._attribute_to_recent_ai_usage(request.user, len(created))
