@@ -125,6 +125,7 @@ ToDoList/
 │   ├── design-system.md        黑白极简设计系统
 │   ├── ai-assistant.md         AI 任务录入方案（模型、提示词、token 经济）
 │   ├── mcp-and-skills.md       Cursor 集成（MCP server + Agent Skill）
+│   ├── cloudflare-tunnel.md    端口说明与 Cloudflare Tunnel 部署
 │   ├── deployment.md           部署与运维手册
 │   ├── development.md          本地开发指南
 │   └── roadmap.md              演进路线 V1.1 → V2.0
@@ -184,6 +185,7 @@ make build-frontend
 | MCP / Skill 的设计取舍 | [Cursor 集成设计](docs/mcp-and-skills.md) |
 | AI 怎么接？怎么省 token？ | [AI 方案](docs/ai-assistant.md) |
 | 怎么在 Cursor 里拉取/写回任务？ | [Cursor 集成](docs/mcp-and-skills.md) |
+| 端口分别是多少？怎么挂到域名上？ | [Tunnel 部署](docs/cloudflare-tunnel.md) |
 | 怎么部署？怎么做备份？出问题怎么办？ | [部署手册](docs/deployment.md) |
 | 怎么本地改代码？ | [开发指南](docs/development.md) |
 | 后面还会做什么？ | [演进路线](docs/roadmap.md) |

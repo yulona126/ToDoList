@@ -122,6 +122,33 @@ services:
     networks:
       - todolist
 
+  # ---------------------------------------------------------------------------
+  # Cloudflare Tunnel — expose the app on the internet without opening any port.
+  #
+  # Not started by `docker compose up`. Enable with:
+  #     docker compose --profile tunnel up -d cloudflared
+  #
+  # It joins the compose network and proxies to `frontend:80`, so neither the
+  # web port nor the API port needs to be reachable from outside. The public
+  # hostname -> service mapping is configured in the Cloudflare dashboard
+  # (remotely-managed tunnel); see docs/cloudflare-tunnel.md.
+  # ---------------------------------------------------------------------------
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    # NOTE: this must stay `${VAR:-}`, not `${VAR:?}`. Compose interpolates
+    # *every* service regardless of profile, so a required variable here would
+    # make a plain `docker compose up` fail even though cloudflared is not part
+    # of it. An empty token only breaks the tunnel profile, where cloudflared
+    # reports it itself.
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      frontend:
+        condition: service_healthy
+    networks:
+      - todolist
+
 volumes:
   pgdata:
     name: todolist_pgdata

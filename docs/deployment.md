@@ -194,6 +194,15 @@ HSTS 一年（含子域与 preload）。
 
 ---
 
+## 8.5 Cloudflare Tunnel（挂域名、不开放入站端口）
+
+完整步骤见 [cloudflare-tunnel.md](cloudflare-tunnel.md)，要点：
+
+- Tunnel 指向 **`frontend:80`**（服务名），不是 backend，也不是 `localhost:8081`
+- 同时改 `DJANGO_ALLOWED_HOSTS` / `CSRF_TRUSTED_ORIGINS` / `DJANGO_SECURE_SSL=true`
+- 启动：`docker compose --profile tunnel up -d cloudflared`
+- 建议再开 Cloudflare Access，否则 Django 登录页直接暴露在公网
+
 ## 9. 运维常用命令
 
 ```bash

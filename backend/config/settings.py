@@ -266,6 +266,10 @@ SECURE_SSL = env_bool("DJANGO_SECURE_SSL", default=False)
 if SECURE_SSL:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SECURE_SSL_REDIRECT = True
+    # Health checks arrive over plain http from inside the container network, so
+    # they must not be redirected: a 301 would still let `curl -f` exit 0 while
+    # never touching the database, silently turning the probe into a no-op.
+    SECURE_REDIRECT_EXEMPT = [r"^api/v1/health/$"]
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_HSTS_SECONDS = env_int("DJANGO_HSTS_SECONDS", 31536000)
