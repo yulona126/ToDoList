@@ -330,25 +330,24 @@ code="$(http POST "${API}/ai/parse/" "${AUTH_A[@]}" \
   -d "{\"workspace\":${WS_ID},\"text\":\"这是一段没有标记的自由文本，需要交给模型处理\",\"mode\":\"ai\"}")"
 expect_status 400 "${code}" "AI mode without a key returns 400"
 
-# Graceful degradation: `auto` on unmarked prose must still yield tasks rather
-# than dead-ending on "no API key configured".
+# The contract is binary and explicit: no markers + no AI click = one task.
+# No heuristics, no punctuation splitting, no silent escalation.
 PROSE='下周2howto text会, real time 和 playback 显示的roi 都要显示， 只是可以手动隐藏一些roi (需要等下周joy整合完), 接入library页面, 跳转需要到新library页面'
 code="$(http POST "${API}/ai/parse/" "${AUTH_A[@]}" \
   -H 'Content-Type: application/json' \
-  --data-binary "$(python3 -c 'import json,sys; print(json.dumps({"workspace": int(sys.argv[1]), "text": sys.argv[2], "mode": "auto"}, ensure_ascii=False))' "${WS_ID}" "${PROSE}")")"
-expect_status 200 "${code}" "auto parse of prose degrades instead of failing"
-expect_eq "local" "$(json source)" "degraded result is still a local result"
-expect_eq "0" "$(json usage.total_tokens)" "degraded result costs 0 tokens"
-SECOND_TASK="$(json tasks.1.t)"
-if [ -n "${SECOND_TASK}" ]; then
-  ok "prose was split into multiple tasks (2nd: ${SECOND_TASK})"
-else
-  ko "prose was NOT split; it produced a single blob" "$(body_head)"
-fi
-case "$(json warnings.0.code)$(json warnings.1.code)" in
-  *ai_unavailable*) ok "the degraded result says why AI was not used" ;;
-  *) ko "missing ai_unavailable warning" "$(body_head)" ;;
-esac
+  --data-binary "$(python3 -c 'import json,sys; print(json.dumps({"workspace": int(sys.argv[1]), "text": sys.argv[2], "mode": "local"}, ensure_ascii=False))' "${WS_ID}" "${PROSE}")")"
+expect_status 200 "${code}" "local mode on unmarked prose succeeds"
+expect_eq "local" "$(json source)" "source == local, no model involved"
+TASK_COUNT="$(python3 -c "
+import json; d=json.load(open('${TMP}/body')); print(len(d['tasks']))" 2>/dev/null)"
+expect_eq "1" "${TASK_COUNT}" "unmarked prose stays ONE task (no hidden magic)"
+expect_eq "0" "$(json usage.total_tokens)" "and costs 0 tokens"
+
+# `auto` was removed: whether a model is used is the caller's decision.
+code="$(http POST "${API}/ai/parse/" "${AUTH_A[@]}" \
+  -H 'Content-Type: application/json' \
+  -d "{\"workspace\":${WS_ID},\"text\":\"随便写点什么\",\"mode\":\"auto\"}")"
+expect_status 400 "${code}" "the removed 'auto' mode is rejected"
 
 code="$(http POST "${API}/tasks/bulk-create/" "${AUTH_A[@]}" \
   -H 'Content-Type: application/json' \

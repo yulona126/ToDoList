@@ -221,13 +221,14 @@ const enUS: TranslationSchema = {
   ai: {
     captureTitle: 'AI capture',
     captureDescription:
-      'Paste any text, review the drafts, then create them in one go. Only prose reaches the model.',
+      'Paste any text. Without pressing "Analyse with AI" we only read @list #tag !priority; pressing it hands the whole text to the model.',
     captureInputLabel: 'Text',
     capturePlaceholder:
       'Write or paste what needs doing. @list #tag !high /meeting tomorrow all work.',
     analyse: 'Analyse with AI',
     analysing: 'Analysing…',
-    analyseHint: 'Short marked-up lines resolve locally and cost nothing',
+    analyseHint: 'Only this button calls the model; without it we parse @list #tag !priority /type.',
+    proseHint: 'No markers here — press the button to have AI split this',
     estimateNote: 'Roughly {{tokens}} tok expected · actual usage appears when it returns',
     localPreviewHint: '{{total}} tasks ready · local parse',
     localPreviewEmpty: 'Nothing parsed yet',

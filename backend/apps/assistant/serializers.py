@@ -97,7 +97,13 @@ class AiParseRequestSerializer(serializers.Serializer[Any]):
     workspace = serializers.IntegerField()
     text = serializers.CharField(allow_blank=False, max_length=20_000, trim_whitespace=True)
     mode = serializers.ChoiceField(
-        choices=("auto", "local", "ai"), default="auto", required=False
+        choices=("local", "ai"),
+        default="local",
+        required=False,
+        help_text=(
+            "local (default) = marker rules only, never calls a model. "
+            "ai = hand the text to the model regardless of markers."
+        ),
     )
     default_list = serializers.IntegerField(required=False, allow_null=True)
     default_type = serializers.CharField(required=False, allow_blank=True, max_length=20)

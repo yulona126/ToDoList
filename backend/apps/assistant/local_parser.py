@@ -46,13 +46,6 @@ WEEKDAY_NAMES = {
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _SHORT_DATE_RE = re.compile(r"^(\d{1,2})-(\d{1,2})$")
 
-#: Sentence punctuation treated as a task boundary by the best-effort splitter.
-#:
-#: ASCII ``!`` is deliberately absent: it is the priority marker (``!高``), and
-#: splitting on it would tear `写文档 @开发 !高` into two fragments and lose the
-#: priority. The full-width ``！`` carries no such meaning and is safe.
-_SPLIT_RE = re.compile(r"[，,。；;！？?\n\r]+")
-
 
 @dataclass
 class LocalDraft:
@@ -194,7 +187,13 @@ def _parse_line(
 
 
 def should_escalate(text: str) -> bool:
-    """Whether this text is too free-form for the rules (docs §2.2)."""
+    """Whether this text *looks* like prose the rules cannot segment.
+
+    **Advisory only.** It drives a UI hint ("this looks like prose, try AI") and
+    no longer decides anything: whether the model is used is now entirely the
+    caller's choice (`mode`), because guessing wrong in either direction is
+    worse than letting the user click a button.
+    """
     stripped = text.strip()
     if not stripped:
         return False
@@ -245,36 +244,3 @@ def parse(
         should_escalate=should_escalate(text),
     )
 
-
-def parse_best_effort(
-    text: str,
-    *,
-    lists: list[dict[str, Any]],
-    today: date,
-    unknown_list_label: str = "未分组",
-    max_tasks: int = 8,
-) -> LocalParseResult:
-    """Last-resort segmentation for unmarked prose.
-
-    Rules alone cannot split ``…，…，…`` into separate tasks, but treating the
-    sentence punctuation as line breaks gets the common case right and still
-    costs nothing. Used when the model is unavailable (not configured, or the
-    caller explicitly asked for rules only) so the user is never handed back a
-    single 107-character "task" — or nothing at all.
-
-    Deliberately does **not** split on connector words: ``real time 和 playback
-    的 roi`` is one item, not two.
-    """
-    normalized = _SPLIT_RE.sub("\n", text)
-    result = parse(
-        normalized,
-        lists=lists,
-        today=today,
-        unknown_list_label=unknown_list_label,
-        max_tasks=max_tasks,
-    )
-    # The caller has already decided that a model is not in play; there is
-    # nothing left to escalate to.
-    return LocalParseResult(
-        drafts=result.drafts, warnings=result.warnings, should_escalate=False
-    )

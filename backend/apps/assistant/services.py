@@ -310,74 +310,38 @@ def parse_text(
         for item in workspace.lists.filter(is_archived=False)
     ]
 
-    if mode in ("auto", "local"):
-        local = local_parser.parse(
-            text,
-            lists=lists,
-            today=timezone.localdate(),
-            max_tasks=MAX_DRAFTS,
+    if mode == "ai":
+        # The user explicitly asked for the model: hand the text over as-is.
+        # Markers are still useful to the model as context, so nothing is stripped.
+        return _ai_response(
+            user, workspace, text, default_list_id=default_list_id,
+            default_task_type=default_task_type,
         )
-        confident = bool(local.drafts) and not local.should_escalate
 
-        if confident:
-            return _local_response(user, workspace, local, default_list_id, default_task_type)
+    # `local` (the default): markers only. No escalation, no punctuation
+    # splitting, no guessing — if the user did not ask for AI, whatever the
+    # markers say is what they get, even if that is one long title.
+    local = local_parser.parse(
+        text,
+        lists=lists,
+        today=timezone.localdate(),
+        max_tasks=MAX_DRAFTS,
+    )
+    return _local_response(user, workspace, local, default_list_id, default_task_type)
 
-        if mode == "local":
-            # Rules-only was requested on prose. Handing back a single
-            # 100-character "task" (or nothing) is useless, so fall back to a
-            # punctuation split instead of failing.
-            rough = local_parser.parse_best_effort(
-                text,
-                lists=lists,
-                today=timezone.localdate(),
-                max_tasks=MAX_DRAFTS,
-            )
-            return _local_response(
-                user,
-                workspace,
-                rough,
-                default_list_id,
-                default_task_type,
-                extra_warnings=[
-                    {
-                        "code": "rough_split",
-                        "message": (
-                            f"这段文字没有标记，已按标点粗拆成 {len(rough.drafts)} 条，请逐条确认。"
-                        ),
-                    }
-                ],
-            )
 
-    # ---- AI path -----------------------------------------------------------
+def _ai_response(
+    user: Any,
+    workspace: Workspace,
+    text: str,
+    *,
+    default_list_id: int | None,
+    default_task_type: str | None,
+) -> dict[str, Any]:
     credential = get_credential(user)
     if credential is None or not credential.usable:
-        if mode == "ai":
-            # The caller explicitly demanded a model; refusing is honest.
-            raise AiNotConfigured(
-                "尚未配置 AI，请先在「设置 → AI 分析」中填入 API Key。"
-            )
-        # `auto` degrades gracefully: a rough split beats a dead end.
-        rough = local_parser.parse_best_effort(
-            text,
-            lists=lists,
-            today=timezone.localdate(),
-            max_tasks=MAX_DRAFTS,
-        )
-        return _local_response(
-            user,
-            workspace,
-            rough,
-            default_list_id,
-            default_task_type,
-            extra_warnings=[
-                {
-                    "code": "ai_unavailable",
-                    "message": (
-                        f"尚未配置 AI，已按标点粗拆成 {len(rough.drafts)} 条。"
-                        "在「设置 → AI 分析」填入 API Key 后可获得更准确的拆分。"
-                    ),
-                }
-            ],
+        raise AiNotConfigured(
+            "尚未配置 AI，请先在「设置 → AI 分析」中填入 API Key。"
         )
 
     enforce_quota(user)

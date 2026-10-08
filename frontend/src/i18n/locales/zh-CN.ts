@@ -217,13 +217,15 @@ const zhCN = {
   },
   ai: {
     captureTitle: 'AI 录入',
-    captureDescription: '粘贴任意文本，确认草稿后一次性创建；只有长句才会调用模型。',
+    captureDescription:
+      '粘贴任意文本。不点「用 AI 分析」就只按 @清单 #标签 !优先级 识别；点了则整段交给模型。',
     captureInputLabel: '文本',
     capturePlaceholder:
       '写下或粘贴要做的事。支持 @清单 #标签 !高 /会议 明天 这类标记。',
     analyse: '用 AI 分析',
     analysing: '分析中…',
-    analyseHint: '带标记的短句本地即时解析，不消耗 token',
+    analyseHint: '只有点这个按钮才会调用模型；不点则按 @清单 #标签 !优先级 /类型 识别。',
+    proseHint: '这段文字没有标记，点左边按钮让 AI 帮你拆分',
     estimateNote: '预计约 {{tokens}} tok · 完成后显示实际用量',
     localPreviewHint: '将创建 {{total}} 条任务 · 本地解析',
     localPreviewEmpty: '还没有解析出任务',

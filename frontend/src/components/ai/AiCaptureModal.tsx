@@ -9,7 +9,11 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useTags } from '../../hooks/useTags';
 import { useLists } from '../../hooks/useLists';
-import { useAiParse, useBulkCreateTasks } from '../../hooks/useAi';
+import {
+  useAiCredential,
+  useAiParse,
+  useBulkCreateTasks,
+} from '../../hooks/useAi';
 import type { ParsedDraft, ParsedTextResult } from '../../lib/aiApi';
 import { toApiError } from '../../lib/api';
 import { localParse } from '../../lib/localParse';
@@ -64,6 +68,8 @@ export function AiCaptureModal({
   const tagsQuery = useTags(workspaceId, open);
   const aiParse = useAiParse();
   const bulkCreate = useBulkCreateTasks();
+  const credentialQuery = useAiCredential(open);
+  const credential = credentialQuery.data;
 
   const [text, setText] = useState('');
   const [aiResult, setAiResult] = useState<ParsedTextResult | null>(null);
@@ -132,16 +138,13 @@ export function AiCaptureModal({
   );
 
   /**
-   * The instant, free preview.
-   *
-   * When the input looks like prose (`shouldEscalate`) we preview the
-   * best-effort punctuation split rather than the single blob the strict rules
-   * produce — that is exactly what `mode=auto` returns when no model is
-   * configured, so the preview matches the server.
+   * The instant, free preview: exactly what the marker rules would create, and
+   * exactly what the server returns for `mode=local`. No guessing — if the
+   * user did not ask for AI, unmarked prose stays one task.
    */
   const localDrafts = useMemo<CaptureDraft[]>(
     () =>
-      localResult.fallbackDrafts.map((draft, index) => ({
+      localResult.drafts.map((draft, index) => ({
         id: `local-${index}`,
         selected: true,
         expanded: false,
@@ -157,8 +160,12 @@ export function AiCaptureModal({
         tagNames: draft.tagNames,
         subtasks: [],
       })),
-    [localResult.fallbackDrafts, listIdByName],
+    [localResult.drafts, listIdByName],
   );
+
+  // The AI button must genuinely reach the model, so it is only offered when a
+  // key exists — otherwise clicking it would just produce a 400.
+  const aiReady = Boolean(credential?.key_mask) && credential?.is_active === true;
 
   const hasAiResult = aiResult !== null;
   const checkedCount = hasAiResult
@@ -197,7 +204,7 @@ export function AiCaptureModal({
       const result = await aiParse.mutateAsync({
         workspace: workspaceId,
         text: trimmed,
-        mode: 'auto',
+        mode: 'ai',
         default_list: defaultListId ?? undefined,
       });
       setAiResult(result);
@@ -308,19 +315,23 @@ export function AiCaptureModal({
             variant="secondary"
             iconLeft={<Icon name="compass" size={13} />}
             loading={aiParse.isPending}
-            disabled={text.trim().length === 0 || pending}
+            disabled={text.trim().length === 0 || pending || !aiReady}
             onClick={() => void runAnalysis()}
           >
             {aiParse.isPending ? t('ai.analysing') : t('ai.analyse')}
           </Button>
 
-          {aiParse.isPending ? (
+          {!aiReady && !credentialQuery.isPending ? (
+            <span className="text-meta text-fg-muted">{t('ai.notConfigured')}</span>
+          ) : aiParse.isPending ? (
             <span className="text-meta text-fg-subtle">
               {t('ai.estimateNote', { tokens: estimatedTokens })}
             </span>
           ) : (
             <span className="text-meta text-fg-subtle">
-              {t('ai.analyseHint')}
+              {localResult.shouldEscalate
+                ? t('ai.proseHint')
+                : t('ai.analyseHint')}
             </span>
           )}
         </div>

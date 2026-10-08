@@ -344,13 +344,16 @@ class LocalParseApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
 
-# ------------------------------------------- API: graceful degradation (T1)
-class LocalFallbackTests(APITestCase):
-    """Rules-only degradation when the model is unavailable.
+# ------------------------------------------------ API: explicit mode contract
+class ExplicitModeTests(APITestCase):
+    """Whether a model is used is the caller's decision, not a heuristic.
 
-    Regression for a real report: pasting prose with no markers and no API key
-    configured produced **zero** tasks, because `mode=auto` escalated and then
-    returned 400, discarding the local result it already had.
+    Regression for a real report: prose with no markers produced zero tasks,
+    because an `auto` heuristic escalated to a model that was not configured.
+    The contract is now binary and explicit:
+
+    * `mode=local` (default) — markers only. Never calls a model, never guesses.
+    * `mode=ai`              — always hands the text to the model.
     """
 
     #: The exact text that triggered the report.
@@ -367,132 +370,60 @@ class LocalFallbackTests(APITestCase):
         self.client.force_authenticate(self.user)
         self.workspace = Workspace.objects.create(name="W", owner=self.user)
         TaskList.objects.create(workspace=self.workspace, name="开发")
-        # Deliberately NO AiCredential: this is the "not configured" path.
+        # Deliberately NO AiCredential.
 
-    def parse(self, text: str, mode: str = "auto"):
-        return self.client.post(
-            PARSE_URL,
-            {"workspace": self.workspace.id, "text": text, "mode": mode},
-            format="json",
-        )
+    def parse(self, text: str, mode: str | None = None):
+        payload = {"workspace": self.workspace.id, "text": text}
+        if mode is not None:
+            payload["mode"] = mode
+        return self.client.post(PARSE_URL, payload, format="json")
 
-    def test_auto_without_credential_degrades_instead_of_failing(self) -> None:
-        response = self.parse(self.PROSE, mode="auto")
+    # -- local ---------------------------------------------------------------
+    def test_local_is_the_default(self) -> None:
+        response = self.parse("写登录页 @开发 !高")
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data["source"], "local")
         self.assertEqual(response.data["usage"]["total_tokens"], 0)
 
-    def test_prose_is_split_into_several_tasks(self) -> None:
-        response = self.parse(self.PROSE, mode="auto")
-        titles = [t["t"] for t in response.data["tasks"]]
-        # The old behaviour returned this entire 107-char string as one title.
-        self.assertGreaterEqual(len(titles), 4, titles)
-        for title in titles:
-            self.assertLess(len(title), 60, title)
-        self.assertIn("接入library页面", titles)
-        self.assertIn("跳转需要到新library页面", titles)
+    def test_local_never_escalates_on_prose(self) -> None:
+        """No markers means one task — even when that task is a whole paragraph.
 
-    def test_degraded_result_explains_itself(self) -> None:
-        response = self.parse(self.PROSE, mode="auto")
-        codes = [w["code"] for w in response.data["warnings"]]
-        self.assertIn("ai_unavailable", codes)
-        message = next(
-            w["message"] for w in response.data["warnings"] if w["code"] == "ai_unavailable"
-        )
-        self.assertIn("粗拆", message)
-
-    def test_local_mode_also_splits_prose(self) -> None:
+        That is the documented contract, not a failure: the user did not ask
+        for AI, so the rules do not invent structure.
+        """
         response = self.parse(self.PROSE, mode="local")
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        self.assertGreaterEqual(len(response.data["tasks"]), 4)
-        self.assertIn("rough_split", [w["code"] for w in response.data["warnings"]])
-
-    def test_local_mode_still_prefers_a_clean_marked_line(self) -> None:
-        response = self.parse("写登录页 @开发 !高", mode="local")
+        self.assertEqual(response.data["source"], "local")
         self.assertEqual(len(response.data["tasks"]), 1)
-        self.assertEqual(response.data["tasks"][0]["t"], "写登录页")
-        # A confident local parse must not carry the "rough split" caveat.
-        self.assertNotIn("rough_split", [w["code"] for w in response.data["warnings"]])
+        self.assertEqual(response.data["usage"]["total_tokens"], 0)
 
-    def test_explicit_ai_mode_still_refuses_without_a_credential(self) -> None:
-        response = self.parse(self.PROSE, mode="ai")
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("尚未配置", response.data["detail"])
-
-    def test_connectors_do_not_create_false_boundaries(self) -> None:
-        """`real time 和 playback` is one item, not two."""
-        response = self.parse(self.PROSE, mode="local")
-        titles = [t["t"] for t in response.data["tasks"]]
-        self.assertTrue(
-            any("real time" in t and "playback" in t for t in titles), titles
-        )
-
-    def test_degraded_path_is_recorded_as_a_free_local_call(self) -> None:
-        self.parse(self.PROSE, mode="auto")
+    def test_local_makes_no_ai_call_and_records_nothing_billable(self) -> None:
+        self.parse(self.PROSE, mode="local")
         record = AiUsageRecord.objects.get(user=self.user)
         self.assertEqual(record.source, AiUsageRecord.Source.LOCAL)
         self.assertEqual(record.total_tokens, 0)
 
+    def test_local_works_without_any_credential(self) -> None:
+        self.assertEqual(self.parse("随手记一条", mode="local").status_code, 200)
 
-class BestEffortSplitterTests(APITestCase):
-    """Unit-level coverage of :func:`local_parser.parse_best_effort`."""
+    def test_auto_mode_is_gone(self) -> None:
+        self.assertEqual(self.parse(self.PROSE, mode="auto").status_code, 400)
 
-    LISTS = [{"id": 1, "name": "开发"}]
+    # -- ai ------------------------------------------------------------------
+    def test_ai_always_requires_a_credential_even_for_marked_text(self) -> None:
+        """Clicking "AI analyse" must really go to the model, so it must fail
+        loudly when there is no key — not silently fall back to the rules."""
+        for text in (self.PROSE, "写登录页 @开发 !高"):
+            with self.subTest(text=text[:20]):
+                response = self.parse(text, mode="ai")
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+                self.assertIn("尚未配置", response.data["detail"])
 
-    def split(self, text: str):
-        return local_parser.parse_best_effort(
-            text, lists=self.LISTS, today=date(2026, 10, 8)
+    def test_ai_never_falls_back_to_local(self) -> None:
+        self.parse(self.PROSE, mode="ai")
+        self.assertFalse(
+            AiUsageRecord.objects.filter(source=AiUsageRecord.Source.LOCAL).exists()
         )
-
-    def test_splits_on_chinese_and_ascii_punctuation(self) -> None:
-        # ASCII `!` is excluded on purpose (priority marker) — see the
-        # dedicated test below.
-        result = self.split("甲，乙,丙。丁；戊！己?庚")
-        self.assertEqual(
-            [d.t for d in result.drafts], ["甲", "乙", "丙", "丁", "戊", "己", "庚"]
-        )
-
-    def test_never_escalates(self) -> None:
-        self.assertFalse(self.split("随便一段很长的没有标记的文字，还需要模型帮忙").should_escalate)
-
-    def test_markers_still_work_inside_fragments(self) -> None:
-        result = self.split("写文档 @开发 !高，跑测试 @开发")
-        self.assertEqual(len(result.drafts), 2)
-        self.assertEqual(result.drafts[0].list_name, "开发")
-        self.assertEqual(result.drafts[0].priority, "high")
-        self.assertEqual(result.drafts[1].t, "跑测试")
-
-    def test_ascii_bang_is_not_a_separator(self) -> None:
-        """Regression: `!` is the priority marker, not sentence punctuation.
-
-        Splitting on it tore `写文档 @开发 !高` into `写文档 @开发` + `高`,
-        producing a phantom "高" task and silently dropping the priority.
-        """
-        result = self.split("写文档 @开发 !urgent")
-        self.assertEqual(len(result.drafts), 1)
-        self.assertEqual(result.drafts[0].t, "写文档")
-        self.assertEqual(result.drafts[0].priority, "urgent")
-
-    def test_fullwidth_punctuation_still_splits(self) -> None:
-        result = self.split("甲！乙？丙。")
-        self.assertEqual([d.t for d in result.drafts], ["甲", "乙", "丙"])
-
-    def test_respects_the_task_cap(self) -> None:
-        result = local_parser.parse_best_effort(
-            "，".join(f"任务{i}" for i in range(30)),
-            lists=self.LISTS,
-            today=date(2026, 10, 8),
-            max_tasks=8,
-        )
-        self.assertEqual(len(result.drafts), 8)
-
-    def test_ignores_empty_fragments(self) -> None:
-        result = self.split("甲，，,，乙")
-        self.assertEqual([d.t for d in result.drafts], ["甲", "乙"])
-
-    def test_does_not_split_on_connectors(self) -> None:
-        result = self.split("real time 和 playback 都要显示")
-        self.assertEqual(len(result.drafts), 1)
 
 
 # ---------------------------------------------------------- API: parse (AI)
