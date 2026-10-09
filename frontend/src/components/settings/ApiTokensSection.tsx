@@ -192,7 +192,10 @@ export function ApiTokensSection() {
   };
 
   return (
-    <section className="rounded-card border border-border bg-surface p-4">
+    <section
+      id="api-tokens"
+      className="rounded-card border border-border bg-surface p-4"
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h2 className="text-card-title font-semibold text-fg">

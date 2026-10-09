@@ -85,8 +85,9 @@ services:
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+      # Repo root: Dockerfile packs Cursor MCP downloads from mcp/ + integrations/.
+      context: .
+      dockerfile: frontend/Dockerfile
     image: todolist-frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     depends_on:

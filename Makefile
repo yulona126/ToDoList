@@ -77,7 +77,8 @@ dev-frontend: ## Run the Vite dev server (proxies /api to :8001)
 typecheck-frontend: ## tsc --noEmit
 	cd frontend && npm run typecheck
 
-build-frontend: ## Production build of the SPA
+build-frontend: ## Production build of the SPA (packs Cursor MCP downloads first)
+	./scripts/pack-cursor-integration.sh
 	cd frontend && npm run build
 
 # --- maintenance ------------------------------------------------------------

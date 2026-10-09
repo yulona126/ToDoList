@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { AiSettingsSection } from '../components/ai/AiSettingsSection';
 import { AlertBanner } from '../components/auth/AlertBanner';
 import { ApiTokensSection } from '../components/settings/ApiTokensSection';
+import { CursorIntegrationSection } from '../components/settings/CursorIntegrationSection';
 import { Button } from '../components/ui/Button';
 import { Icon } from '../components/ui/Icon';
 import { Input } from '../components/ui/Input';
@@ -254,6 +255,8 @@ export function SettingsPage() {
       </Section>
 
       <AiSettingsSection />
+
+      <CursorIntegrationSection />
 
       <ApiTokensSection />
     </div>

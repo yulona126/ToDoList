@@ -9,6 +9,12 @@ Two pieces, both installed into **your project's** `.cursor/` directory:
 
 ## Install
 
+**From the web UI (other machines):** open ToDoList → **Settings → Cursor integration**,
+download the MCP package, and follow the on-page steps. No full repo needed.
+Refresh the downloadable zips with `scripts/pack-cursor-integration.sh`.
+
+**From this repo:**
+
 ```bash
 # from a checkout of ToDoList
 scripts/install-cursor-integration.sh /path/to/your/project     # or omit for $PWD

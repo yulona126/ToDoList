@@ -281,6 +281,40 @@ const zhCN = {
     deleteConfirmBody: '删除后 AI 录入不可用，直到你重新填入 API Key。',
     deleted: 'AI 凭据已删除',
   },
+  cursor: {
+    settingsTitle: 'Cursor 集成',
+    settingsDescription:
+      '下载 MCP 安装包或 Skill，放到其他开发机的 Cursor 项目里即可读写本 ToDoList。不需要完整仓库。',
+    apiUrlLabel: '建议的 API 地址',
+    apiUrlHint:
+      '安装时把 TODOLIST_API_URL 设成这个值（与当前网页同源）。另一台机器必须能访问到它。',
+    apiUrlCopied: 'API 地址已复制',
+    downloadMcp: '下载 MCP 安装包',
+    downloadSkill: '仅下载 Skill',
+    packageVersion: '安装包版本 {{version}}',
+    copy: '复制',
+    copied: '已复制',
+    copyFailed: '复制失败，请手动选择文本',
+    step1Title: '创建 API Token',
+    step1Body: 'Token 是 Cursor 访问你数据的钥匙，明文只显示一次。',
+    step1TokenHint: '在本页下方',
+    step1TokenLink: 'API Tokens',
+    step1TokenSuffix: ' 新建一个，名字可用 cursor-mcp。',
+    step2Title: '在另一台机器解压并安装',
+    step2Body:
+      '把 zip 拷到开发机，改成你的项目路径后执行（需要 Python 3.10+）：',
+    installCmd:
+      "unzip todolist-cursor-mcp.zip && cd todolist-cursor-mcp\nexport TODOLIST_API_URL='{{apiUrl}}'\n./install.sh ~/code/你的项目",
+    step3Title: '写入 Token',
+    step3Body: '把刚才复制的 token 写进环境文件（不要提交进仓库）：',
+    tokenCmd:
+      "mkdir -p ~/.config/todolist && chmod 700 ~/.config/todolist\necho 'TODOLIST_TOKEN=tdl_你的token' > ~/.config/todolist/mcp.env\nchmod 600 ~/.config/todolist/mcp.env",
+    step4Title: 'Reload Cursor',
+    step4Body:
+      'Cmd/Ctrl+Shift+P → Reload Window，或在 Settings → MCP 开关 todolist。然后问「我有哪些工作区」。',
+    footnote:
+      'MCP 进程跑在 Cursor 那台机器上，通过 HTTP 访问本服务；Skill 只是使用约定，单独下载无法读写数据。',
+  },
   tokens: {
     settingsTitle: 'API Tokens',
     settingsDescription: '供 Cursor MCP / 命令行 / CI 使用；与网页登录无关。',

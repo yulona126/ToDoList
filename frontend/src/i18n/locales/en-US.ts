@@ -286,6 +286,40 @@ const enUS: TranslationSchema = {
       'AI capture stays unavailable until you enter an API key again.',
     deleted: 'AI credential deleted',
   },
+  cursor: {
+    settingsTitle: 'Cursor integration',
+    settingsDescription:
+      'Download the MCP package or Skill and drop it into another machine’s Cursor project to read and write this ToDoList. No full repo checkout needed.',
+    apiUrlLabel: 'Suggested API URL',
+    apiUrlHint:
+      'Set TODOLIST_API_URL to this value when installing (same origin as this page). The other machine must be able to reach it.',
+    apiUrlCopied: 'API URL copied',
+    downloadMcp: 'Download MCP package',
+    downloadSkill: 'Skill only',
+    packageVersion: 'Package version {{version}}',
+    copy: 'Copy',
+    copied: 'Copied',
+    copyFailed: 'Could not copy — select the text manually',
+    step1Title: 'Create an API token',
+    step1Body: 'The token is Cursor’s key to your data; plaintext is shown once.',
+    step1TokenHint: 'Use',
+    step1TokenLink: 'API tokens',
+    step1TokenSuffix: ' below — name it cursor-mcp.',
+    step2Title: 'Unzip and install on the other machine',
+    step2Body:
+      'Copy the zip there, then run (Python 3.10+). Replace the project path:',
+    installCmd:
+      "unzip todolist-cursor-mcp.zip && cd todolist-cursor-mcp\nexport TODOLIST_API_URL='{{apiUrl}}'\n./install.sh ~/code/your-project",
+    step3Title: 'Write the token',
+    step3Body: 'Put the token you copied into an env file (keep it out of git):',
+    tokenCmd:
+      "mkdir -p ~/.config/todolist && chmod 700 ~/.config/todolist\necho 'TODOLIST_TOKEN=tdl_your_token' > ~/.config/todolist/mcp.env\nchmod 600 ~/.config/todolist/mcp.env",
+    step4Title: 'Reload Cursor',
+    step4Body:
+      'Cmd/Ctrl+Shift+P → Reload Window, or toggle Settings → MCP → todolist. Then ask “list my workspaces”.',
+    footnote:
+      'The MCP process runs on the Cursor machine and talks to this service over HTTP. The Skill alone cannot read or write data.',
+  },
   tokens: {
     settingsTitle: 'API tokens',
     settingsDescription: 'For Cursor MCP, the CLI and CI — unrelated to web sign-in.',

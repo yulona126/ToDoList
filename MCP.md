@@ -56,6 +56,10 @@ export REPO=/Users/yulon/code/ToDoList    # ← 改成你的实际路径
 
 ## 3. 安装（4 步）
 
+> **最快路径（另一台开发机）**：打开本服务网页 → **设置 → Cursor 集成**，
+> 下载「MCP 安装包」，按页面上的命令解压运行即可。不需要完整仓库。
+> 下面是从本仓库源码安装的完整步骤（开发 MCP 本身时用）。
+
 ### 第 1 步 · 建一个 Python 环境给 MCP server
 
 MCP server 需要官方 `mcp` SDK，装在一个独立 venv 里：

@@ -1,0 +1,14 @@
+{
+  "version": "c6e4137",
+  "built_at": "2026-10-08T09:20:56Z",
+  "packages": {
+    "mcp": {
+      "file": "todolist-cursor-mcp.zip",
+      "bytes": 26085
+    },
+    "skill": {
+      "file": "todolist-cursor-skill.zip",
+      "bytes": 2733
+    }
+  }
+}

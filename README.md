@@ -1,153 +1,180 @@
 # ToDoList
 
-> 给开发者的**项目级待办中枢** —— 一个 Workspace 对应一个项目或一个版本，
-> 把梳理期散落的需求、开发、会议、沟通事项沉淀成结构化待办。
-> 黑白极简、中英双语、可安装为 PWA、一条命令自托管。
+[![License: MIT](https://img.shields.io/badge/License-MIT-0a0a0a.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/deploy-docker%20compose-2496ED?logo=docker&logoColor=white)](docs/deployment.md)
+[![Stack](https://img.shields.io/badge/stack-Django%20%2B%20React%20PWA-0a0a0a)](#技术栈)
+[![MCP](https://img.shields.io/badge/Cursor-MCP%20ready-0a0a0a)](MCP.md)
 
----
+> **给开发者的项目级待办中枢。**  
+> 一个 Workspace = 一个项目 / 一个版本。把散落在聊天、会议纪要、便签里的事，收成你随时能打开、能筛、能写回 Cursor 的结构化待办。
 
-## 为什么做这个
-
-在 AI 辅助编码成为主流的今天，开发者的工作重心前移到了「梳理上下文」：
-
-- 一个版本启动时要沉淀大量决策、约束、待办、会议结论；
-- 与 AI 协作时注意力被局部实现牵走，**跨会话的长期记忆会丢失**；
-- 普通 Todo 工具缺少「项目/工作区」这一层，回答不了"这个版本我还欠着哪些事"。
-
-这个工具就是为了回答最后那个问题。
+黑白极简 · 中英双语 · 可安装 PWA · 一条命令自托管 · 可选 AI 录入 · **原生 Cursor MCP**
 
 ![任务台](docs/images/board.png)
 
 ---
 
-## 功能
+## 它在解决什么问题
 
-**核心**
+AI 写代码越来越快，真正拖进度的往往是另一件事——**上下文散了**：
 
-- 工作区（项目/版本）→ 清单（需求/开发/联调）→ 任务 三层结构
-- 任务支持：状态（待办/进行中/受阻/完成）、优先级、类型（开发/会议/沟通/设计/调研/其他）、截止日、标签、**子任务**
-- 一键完成、批量完成/归档/删除、拖拽式排序接口
-- 按状态、优先级、类型、标签、清单、截止时间、关键词筛选与排序
+| 痛点 | 常见下场 |
+| --- | --- |
+| 开版本时决策、约束、会议结论散落各处 | 三周后没人记得「为什么当时不这样做」 |
+| 跟 AI 协作时注意力沉进局部实现 | 跨会话的长期记忆断掉 |
+| 普通 Todo 只有清单，没有「项目/版本」层 | 答不出「这个版本我还欠着哪些事」 |
 
-**账号与数据**
+ToDoList 就干这一件事：给你一个**按项目组织的外脑**，网页能用，Cursor 里也能读写。
 
-- 邮箱 + 密码注册登录，JWT 鉴权，access 过期静默刷新
-- **每个用户各自的数据**，跨用户访问一律 404（有自动化测试保障）
-- 共享工作区的表结构与查询边界已就绪，V1.2 直接开启
+---
 
-**AI 录入（可选，需自备 DeepSeek API Key）**
+## 30 秒摸清产品
 
-- 一段杂乱的想法 / 会议纪要 → 结构化任务草稿，确认后批量创建
-- **本地规则解析优先**：`写登录页 @开发 #api !高 明天` 这类输入完全不走模型，**0 token**
-- 系统提示词逐字节固定以命中上下文缓存、输出用单字符键、只发清单/标签**名字**不发 id、绝不发送工作区内已有任务
-- 设置页填写 API Key（服务端 Fernet 加密存储，接口永不返回明文），带「测试连接」与用量统计
-- 每日 token 配额兜底，超限直接拒绝
-- 详见 [AI 方案](docs/ai-assistant.md)
+```
+工作区 Workspace          ← 一个项目 / 一个版本
+  └── 清单 List           ← 需求 / 开发 / 联调 / 会议…
+        └── 任务 Task     ← 状态 · 优先级 · 类型 · 截止日 · 标签 · 子任务
+```
 
-**在 Cursor 里用（MCP + Skill）**
+打开网页注册账号就能用，**不用事先建超管、不用灌种子数据**。
 
-- 说一句「把这个版本的待办整理进开发计划」，Cursor 自己拉取工作区并写进计划文档
-- 提供 4 个 MCP 工具：列出工作区 / 拉取任务（紧凑 Markdown）/ 批量建任务 / 批量改状态
-- 附带 `todolist-plan` Agent Skill，让 Cursor 知道**什么时候**该调用
-- 一条命令装进任意项目：`./scripts/install-cursor-integration.sh /path/to/project`
-- 用长期 API Token 认证（SHA-256 存储、可随时撤销、明文只显示一次）
-- 详见 [Cursor 集成](docs/mcp-and-skills.md)
+日常你可以：
 
-**体验**
+- 用键盘 `N` 新建、`/` 搜索、`Esc` 关掉弹层
+- 把会议纪要丢进 **AI 录入**（可选）：本地规则能解析的 **0 token**，点了才走模型
+- 在 Cursor 里说「把这个版本的待办整理进开发计划」——MCP 真的去拉你的工作区
 
-- 中文 / English 一键切换，明暗主题，全站持久化
-- PWA：可安装到桌面，App Shell 预缓存，**离线可读**
-- 键盘快捷键：`N` 新建、`/` 搜索、`Esc` 关闭、`Cmd/Ctrl+Enter` 提交
-- 黑白极简设计，无彩色依赖（状态用形状与填充度表达，见[设计系统](docs/design-system.md)）
-- 响应式，从 375px 手机到宽屏
+---
+
+## 功能一览
+
+### 核心待办
+
+- **三层结构**：工作区 → 清单 → 任务（含子任务）
+- **状态**：待办 / 进行中 / 受阻 / 完成 —— UI 用形状与填充度表达，不靠彩虹色
+- **优先级 / 类型**：紧急→低；开发、会议、沟通、设计、调研、其他
+- **截止日 · 标签 · 筛选 · 排序**；批量完成 / 归档 / 删除；拖拽排序 API 已就绪
+
+### 账号与隔离
+
+- 邮箱 + 密码，JWT；access 过期静默刷新
+- **每用户数据隔离**，跨用户访问统一 404（有自动化测试）
+- 共享工作区的表结构已预埋，邀请 UI 进路线图
+
+### AI 录入（可选，自备 DeepSeek Key）
+
+- 杂乱想法 / 纪要 → 结构化草稿 → 你确认后批量创建
+- 形如 `写登录页 @开发 #api !高 明天` 走本地规则，**不花 token**
+- Key 只在服务端 Fernet 加密；接口永不回说明文；有日配额兜底  
+  细节：[AI 方案](docs/ai-assistant.md)
+
+### Cursor 集成（MCP + Skill）
+
+这是本项目最「开发者向」的一块：
+
+| 能力 | 说明 |
+| --- | --- |
+| 4 个 MCP 工具 | `list_workspaces` / `get_tasks` / `create_tasks` / `update_tasks` |
+| Agent Skill | `todolist-plan`：教 Cursor **何时**该调用、怎么写回 |
+| 网页一键下载 | **设置 → Cursor 集成** 下载安装包，另一台机器**不必 clone 整仓** |
+| 认证 | 长期 API Token（SHA-256 存摘要，明文只显示一次，可撤销） |
+
+```text
+Cursor ──stdio──► todolist-mcp ──HTTP + Bearer──► 本服务 REST API
+```
+
+操作指南：[MCP.md](MCP.md) · 设计说明：[mcp-and-skills.md](docs/mcp-and-skills.md)
+
+### 体验
+
+- 中文 / English，明暗主题，偏好持久化
+- PWA：可安装；App Shell 预缓存；**离线可读**（离线写入会明确失败，不静默丢）
+- 设计系统：[黑白极简](docs/design-system.md) · 375px → 宽屏
 
 ---
 
 ## 技术栈
 
-| 层 | 技术 |
+| 层 | 选型 |
 | --- | --- |
-| 前端 | React 19 · TypeScript 5.9 (strict) · Vite 8 · Tailwind CSS 4 · TanStack Query 5 · React Router 7 · i18next · axios · tailwind-merge |
-| 后端 | Python 3.12 · Django 5.2 LTS · DRF 3.18 · SimpleJWT · drf-spectacular · psycopg 3 · httpx · cryptography |
+| 前端 | React 19 · TypeScript (strict) · Vite 8 · Tailwind 4 · TanStack Query 5 · React Router 7 · i18next |
+| 后端 | Python 3.12 · Django 5.2 LTS · DRF · SimpleJWT · drf-spectacular · psycopg 3 |
 | 数据 | PostgreSQL 17 |
-| 部署 | Docker Compose · Nginx · Gunicorn · WhiteNoise |
+| 部署 | Docker Compose · Nginx · Gunicorn |
 | PWA | vite-plugin-pwa (Workbox) |
+| 集成 | 独立 stdio MCP server（`mcp==2.3.0`） |
+
+生产环境前后端**同源**（Nginx 反代 `/api`）：没有 CORS 纠缠，Service Worker 策略也更简单。
+
+```mermaid
+flowchart LR
+  Browser["浏览器 / PWA"] --> Nginx["Nginx · SPA + 反代"]
+  Nginx --> Django["Django + DRF"]
+  Django --> PG[(PostgreSQL)]
+  Cursor["Cursor"] -->|stdio| MCP["todolist-mcp"]
+  MCP -->|Bearer Token| Nginx
+```
 
 ---
 
 ## 快速开始
 
+仓库地址：[github.com/yulona126/ToDoList](https://github.com/yulona126/ToDoList)
+
 ```bash
-git clone <repo> ToDoList && cd ToDoList
+git clone https://github.com/yulona126/ToDoList.git
+cd ToDoList
 
 cp .env.example .env
-# 强烈建议设置密钥：
-python3 -c "import secrets; print(secrets.token_urlsafe(64))"   # 填进 DJANGO_SECRET_KEY
+# 强烈建议换掉默认密钥：
+python3 -c "import secrets; print(secrets.token_urlsafe(64))"
+# → 填进 .env 的 DJANGO_SECRET_KEY
 
 docker compose up -d --build
 ```
 
-首次构建约 2–4 分钟。完成后打开：
+首次构建大约 2–4 分钟。起来之后：
 
 | 入口 | 地址 |
 | --- | --- |
-| **Web 应用** | **http://localhost:8081** |
+| **Web** | **http://localhost:8081** |
 | API 文档 (Swagger) | http://localhost:8001/api/docs/ |
 | Django Admin | http://localhost:8081/admin/ |
 
-打开 8081 → 注册一个账号 → 立刻可用。**无需预先创建任何数据或超管。**
+打开 8081 → 注册 → 直接用。
 
 ```bash
-make up      # 等价于 docker compose up -d --build
+make up                 # docker compose up -d --build
 make logs S=backend
-make down    # 停止（保留数据）
+make down               # 停掉，数据保留在 volume
 ```
 
-> 端口说明：Web 用 **8081** 而非 8080（macOS 上 Docker Desktop 自身占用 8080），
-> 数据库映射到 **5433**（避开本机常见的 5432）。
+> 端口：Web **8081**（避开 macOS Docker Desktop 占的 8080），Postgres 宿主机 **5433**。  
+> 挂域名、Cloudflare Tunnel：[cloudflare-tunnel.md](docs/cloudflare-tunnel.md)
+
+### 在另一台机器的 Cursor 里接入
+
+1. 本服务网页 → **设置 → Cursor 集成** → 下载 MCP 安装包  
+2. 同页 **API Tokens** 新建一个 token  
+3. 另一台机器解压后按页面命令 `./install.sh`，写好 `TODOLIST_API_URL` 与 token  
+4. Cursor Reload → 问「我有哪些工作区」
+
+完整步骤见 [MCP.md](MCP.md)。
 
 ---
 
 ## 项目结构
 
-```
+```text
 ToDoList/
-├── README.md
-├── MCP.md                       Cursor 安装与使用指南（先看这个）
-├── docker-compose.yml          一条命令拉起 db + backend + frontend
-├── .env.example                环境变量契约（全部有默认值）
-├── Makefile                    常用操作
-├── docs/
-│   ├── architecture.md         架构设计：分层、选型理由、鉴权、PWA 策略
-│   ├── project-plan.md         详细项目计划书：里程碑、WBS、风险、验收
-│   ├── data-model.md           数据模型字段级说明与业务规则
-│   ├── api.md                  REST API 契约（前后端唯一事实来源）
-│   ├── design-system.md        黑白极简设计系统
-│   ├── ai-assistant.md         AI 任务录入方案（模型、提示词、token 经济）
-│   ├── mcp-and-skills.md       Cursor 集成（MCP server + Agent Skill）
-│   ├── cloudflare-tunnel.md    端口说明与 Cloudflare Tunnel 部署
-│   ├── deployment.md           部署与运维手册
-│   ├── development.md          本地开发指南
-│   └── roadmap.md              演进路线 V1.1 → V2.0
-├── backend/                    Django + DRF
-│   ├── config/                 设置、路由、WSGI/ASGI
-│   └── apps/
-│       ├── common/             分页、错误信封、权限、mixin
-│       ├── accounts/           自定义用户、JWT 认证
-│       └── todos/              Workspace / TaskList / Task / Tag
-├── frontend/                   React PWA
-│   ├── nginx.conf              SPA + 反向代理 + 缓存策略
-│   └── src/
-│       ├── components/         ui / layout / tasks / workspace / list / auth / pwa
-│       ├── pages/              路由页面
-│       ├── hooks/              React Query 数据层
-│       ├── stores/             会话 / 主题 / 语言
-│       ├── i18n/               中文 · English
-│       └── types/              与 API 契约对应的 DTO
-└── scripts/
-    ├── e2e.sh                  端到端验收脚本（51 条断言，全绿）
-    ├── backup.sh               数据库备份
-    └── restore.sh              数据库还原
+├── README.md · MCP.md · LICENSE
+├── docker-compose.yml · Makefile · .env.example
+├── docs/                 架构 / 计划 / 数据模型 / API / 设计 / AI / MCP / 部署 / 路线图
+├── backend/              Django + DRF（accounts · todos · assistant）
+├── frontend/             React PWA（设置页可下载 Cursor 安装包）
+├── mcp/                  独立 stdio MCP server
+├── integrations/cursor/  Skill · 安装脚本 · 独立安装包素材
+└── scripts/              e2e · backup · restore · pack-cursor-integration · …
 ```
 
 ---
@@ -155,68 +182,66 @@ ToDoList/
 ## 常用命令
 
 ```bash
-make help              # 列出全部命令
-
-# 运维
+make help
 make up / down / ps / logs / restart
-make shell             # Django shell
-make dbshell           # psql
-make backup            # 备份到 ./backups/
+make shell · make dbshell · make backup
 
-# 质量门禁
-make test-backend      # 后端测试（75 例）
+make test-backend          # 后端单测
 make typecheck-frontend
-make build-frontend
-./scripts/e2e.sh       # 端到端验收（需先 make up）
+make build-frontend        # 会先打包 Cursor 下载 zip
+./scripts/e2e.sh           # 端到端验收（需先 make up）
+./scripts/pack-cursor-integration.sh   # 刷新 /downloads 下的安装包
+```
+
+本地拆开跑（只起库）：
+
+```bash
+docker compose up -d db
+cd backend  && python manage.py runserver
+cd frontend && npm run dev    # http://localhost:5173
 ```
 
 ---
 
-## 文档索引
+## 文档地图
 
-| 想了解 | 看这里 |
+| 你想知道 | 去这里 |
 | --- | --- |
-| 为什么这样设计？有哪些取舍？ | [架构设计](docs/architecture.md) |
-| 要做多久？分几期？验收标准是什么？ | [项目计划书](docs/project-plan.md) |
-| 表结构、字段含义、业务规则 | [数据模型](docs/data-model.md) |
-| 接口怎么调？字段叫什么？ | [API 契约](docs/api.md) |
-| 为什么是黑白？组件长什么样？ | [设计系统](docs/design-system.md) |
-| **怎么在 Cursor 里装好并用起来？** | **[MCP.md](MCP.md)** ← 操作指南 |
-| MCP / Skill 的设计取舍 | [Cursor 集成设计](docs/mcp-and-skills.md) |
-| AI 怎么接？怎么省 token？ | [AI 方案](docs/ai-assistant.md) |
-| 怎么在 Cursor 里拉取/写回任务？ | [Cursor 集成](docs/mcp-and-skills.md) |
-| 端口分别是多少？怎么挂到域名上？ | [Tunnel 部署](docs/cloudflare-tunnel.md) |
-| 怎么部署？怎么做备份？出问题怎么办？ | [部署手册](docs/deployment.md) |
-| 怎么本地改代码？ | [开发指南](docs/development.md) |
-| 后面还会做什么？ | [演进路线](docs/roadmap.md) |
+| 为什么这样分层、鉴权与 PWA 怎么取舍 | [架构设计](docs/architecture.md) |
+| 里程碑、WBS、验收 | [项目计划书](docs/project-plan.md) |
+| 表与业务规则 | [数据模型](docs/data-model.md) |
+| 接口契约 | [API](docs/api.md) |
+| 黑白设计令牌与组件 | [设计系统](docs/design-system.md) |
+| **Cursor 怎么装、怎么用** | **[MCP.md](MCP.md)** |
+| MCP / Skill 设计边界 | [Cursor 集成](docs/mcp-and-skills.md) |
+| AI 提示词与省 token | [AI 方案](docs/ai-assistant.md) |
+| 公网 / Tunnel | [Tunnel](docs/cloudflare-tunnel.md) |
+| 备份、排错、限流建议 | [部署手册](docs/deployment.md) |
+| 本机开发坑 | [开发指南](docs/development.md) |
+| 后面做什么 | [路线图](docs/roadmap.md) |
 
 ---
 
 ## 已知限制（V1）
 
-- ❌ 工作区**共享**只有表结构，没有邀请 UI（V1.2）
-- ❌ 离线仅**可读**，断网时写操作会失败并提示（不做静默丢弃）
-- ❌ 无登录限流，公网部署请在反向代理层限制 `/api/v1/auth/*`（见部署手册 §11）
-- ❌ 无看板拖拽、甘特图、日历、全文检索、邮件/推送通知
-- ⚠️ refresh token 存于 localStorage，存在 XSS 面（V1.1 改 HttpOnly Cookie）
+- 工作区**共享**：只有表结构，没有邀请 UI（计划 V1.2）
+- 离线：**可读**；断网写入会失败并提示（不做静默丢弃）
+- 公网请在反代层限制 `/api/v1/auth/*`（见部署手册）
+- 暂无看板拖拽 UI、甘特、日历、全文检索、推送
+- refresh token 暂存 localStorage（XSS 面；计划改 HttpOnly Cookie）
+
+这些不是「忘了」，是刻意砍掉的范围，写在路线图里等排期。
 
 ---
 
-## 开发
+## 贡献与许可
 
-见 [开发指南](docs/development.md)。
+Issues / PR 欢迎。改 MCP 或 Skill 后记得跑：
 
 ```bash
-docker compose up -d db        # 只起数据库
-cd backend  && python manage.py runserver
-cd frontend && npm run dev     # → http://localhost:5173
+./scripts/pack-cursor-integration.sh
 ```
 
-> 本机 `npm install` 若报 `EPERM ... _cacache`，见[开发指南 §3](docs/development.md#3-️-本机-npm-缓存问题)，
-> 用 `export npm_config_cache="$PWD/.npm-cache"` 即可绕开。
+保证设置页下载的 zip 与源码一致。
 
----
-
-## License
-
-MIT
+**License: [MIT](LICENSE)** —— 自用、改、再分发都可以；别把你的 API Token 和 `.env` 推上来。

@@ -1,0 +1,26 @@
+# Root context is used by frontend/Dockerfile (packs MCP downloads + builds SPA).
+.git/
+.docker/
+**/.venv/
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/dist/
+**/.vite/
+backend/
+docs/
+*.md
+!integrations/cursor/standalone/README.md
+.env
+.env.*
+!.env.example
+backups/
+*.dump
+*.sql.gz
+.mcp-dev-token
+.mcp-venv/
+.mcp.env
+*.mcp.env
+.ai-key-migration
