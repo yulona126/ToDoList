@@ -10,6 +10,8 @@ import { DropdownMenu, type DropdownMenuItem } from '../components/ui/DropdownMe
 import { EmptyState } from '../components/ui/EmptyState';
 import { Spinner } from '../components/ui/Spinner';
 import { TaskFilters } from '../components/tasks/TaskFilters';
+import { TaskTimelinePanel } from '../components/tasks/TaskTimelinePanel';
+import { FlowStrip } from '../components/flow/FlowStrip';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
 import { TaskItem } from '../components/tasks/TaskItem';
 import { QuickAddTask } from '../components/tasks/QuickAddTask';
@@ -17,6 +19,7 @@ import { WorkspaceFormModal } from '../components/workspace/WorkspaceFormModal';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useDeleteList, useLists } from '../hooks/useLists';
 import { useBulkTasks, useDeleteTask, useTasks, useToggleTask } from '../hooks/useTasks';
+import { useCommitTask, useFlow, useUncommitTask } from '../hooks/useFlow';
 import { useTags } from '../hooks/useTags';
 import { useWorkspace, useDeleteWorkspace } from '../hooks/useWorkspaces';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -69,6 +72,9 @@ export function WorkspacePage() {
   const workspaceQuery = useWorkspace(validWorkspaceId ? workspaceId : 0);
   const listsQuery = useLists(validWorkspaceId ? workspaceId : 0);
   const tagsQuery = useTags(validWorkspaceId ? workspaceId : 0);
+  const flowQuery = useFlow(validWorkspaceId ? workspaceId : 0);
+  const commitTask = useCommitTask(workspaceId);
+  const uncommitTask = useUncommitTask(workspaceId);
   const tasksQuery = useTasks({
     workspace: workspaceId,
     // `parent: null` → "top-level only" (api.md §4), which is what the board
@@ -108,6 +114,7 @@ export function WorkspacePage() {
   const [workspaceDeleteOpen, setWorkspaceDeleteOpen] = useState(false);
   const [aiCaptureOpen, setAiCaptureOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [timelineTask, setTimelineTask] = useState<Task | null>(null);
 
   const reportError = useCallback(
     (error: unknown) => {
@@ -349,6 +356,8 @@ export function WorkspacePage() {
         </div>
       ) : null}
 
+      <FlowStrip flow={flowQuery.data} isLoading={flowQuery.isPending} />
+
       <TaskFilters
         filters={filters}
         onChange={updateFilters}
@@ -522,6 +531,28 @@ export function WorkspacePage() {
                             setTaskModalOpen(true);
                           }}
                           onDelete={(target) => setPendingDelete(target)}
+                          agingDays={flowQuery.data?.backlog_aging_days}
+                          onShowTimeline={(target) => setTimelineTask(target)}
+                          onCommit={(target) => {
+                            commitTask.mutate(target.id, {
+                              onError: reportError,
+                              onSuccess: () =>
+                                push({
+                                  type: 'success',
+                                  message: t('flow.pulledIn', { title: target.title }),
+                                }),
+                            });
+                          }}
+                          onUncommit={(target) => {
+                            uncommitTask.mutate(target.id, {
+                              onError: reportError,
+                              onSuccess: () =>
+                                push({
+                                  type: 'success',
+                                  message: t('flow.sentBack', { title: target.title }),
+                                }),
+                            });
+                          }}
                           selectable={selectionMode}
                           selected={selectedIds.includes(task.id)}
                           onSelectToggle={(target) => {
@@ -670,6 +701,11 @@ export function WorkspacePage() {
         workspaceId={workspaceId}
         defaultListId={focusedListId}
         onClose={() => setAiCaptureOpen(false)}
+      />
+
+      <TaskTimelinePanel
+        task={timelineTask}
+        onClose={() => setTimelineTask(null)}
       />
 
       <ConfirmDialog

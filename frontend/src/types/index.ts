@@ -298,8 +298,77 @@ export interface Task {
   is_overdue: boolean;
   tags: Tag[];
   subtask_stats: SubTaskStats;
+  /** Set when the task was pulled into "Now"; null = backlog. */
+  committed_at: string | null;
+  is_committed: boolean;
+  /** Days since capture — the backlog-aging signal (derived server-side). */
+  age_days: number;
+  /** Days since it entered "Now"; null while in the backlog. */
+  now_days: number | null;
   created_at: string;
   updated_at: string;
+}
+
+/* ------------------------------------------------------- §9 story flow */
+
+export type TaskEventKind =
+  | 'created'
+  | 'committed'
+  | 'uncommitted'
+  | 'completed'
+  | 'reopened'
+  | 'blocked'
+  | 'unblocked'
+  | 'moved'
+  | 'noted';
+
+export type TaskEventSource = 'ui' | 'mcp' | 'system';
+
+export interface TaskEvent {
+  id: ID;
+  kind: TaskEventKind;
+  kind_label: string;
+  source: TaskEventSource;
+  note: string;
+  from_value: string;
+  to_value: string;
+  created_at: string;
+}
+
+export interface StorySummary {
+  lead_time_hours: number | null;
+  active_hours: number | null;
+  event_count: number;
+  blocked_ever: boolean;
+  has_test_note: boolean;
+}
+
+export interface TaskEventList {
+  count: number;
+  results: TaskEvent[];
+  summary: StorySummary;
+}
+
+/**
+ * `GET /flow/?workspace=` — every number is derived, so reading it costs the
+ * user nothing. `message` is the one actionable sentence.
+ */
+export interface FlowSummary {
+  workspace: ID;
+  now: number;
+  backlog: number;
+  done_this_week: number;
+  wip_limit: number;
+  wip_exceeded: boolean;
+  wip_headroom: number;
+  throughput_per_week: number[];
+  oldest_backlog_days: number;
+  oldest_now_days: number;
+  stale_backlog: number;
+  backlog_aging_days: number;
+  overdue: number;
+  undated_percent: number;
+  message: string;
 }
 
 export interface TaskCreatePayload {

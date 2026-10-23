@@ -26,6 +26,14 @@ export interface TaskItemProps {
   onSelectToggle?: (task: Task) => void;
   /** Show the list name next to the title (used in search results). */
   showListName?: boolean;
+  /** Backlog ageing threshold, from the flow payload (default 14). */
+  agingDays?: number;
+  /** Pull into "Now" (docs/story-flow.md). */
+  onCommit?: (task: Task) => void;
+  /** Send back to the backlog. */
+  onUncommit?: (task: Task) => void;
+  /** Open the story timeline. */
+  onShowTimeline?: (task: Task) => void;
 }
 
 /**
@@ -44,6 +52,10 @@ export function TaskItem({
   selected = false,
   onSelectToggle,
   showListName = false,
+  agingDays = 14,
+  onCommit,
+  onUncommit,
+  onShowTimeline,
 }: TaskItemProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -51,6 +63,15 @@ export function TaskItem({
   const done = task.status === 'done';
   const blocked = task.status === 'blocked';
   const hasSubtasks = task.subtask_stats.total > 0;
+
+  /* Dwell time: how long this has been waiting where it is. It is the single
+   * most useful number on the row — a 3-day-old "Now" item is normal, a
+   * 21-day-old one is a decision you are avoiding. */
+  const isDone = task.status === 'done';
+  const dwellDays = task.is_committed ? (task.now_days ?? 0) : task.age_days;
+  const dwellLimit = task.is_committed ? 7 : agingDays;
+  const dwellWarn = !isDone && dwellDays >= dwellLimit;
+  const showDwell = !isDone && dwellDays >= 1;
   const visibleTags = task.tags.slice(0, 3);
   const extraTags = task.tags.length - visibleTags.length;
 
@@ -170,7 +191,54 @@ export function TaskItem({
             </Tooltip>
           ) : null}
 
+          {showDwell ? (
+            <Tooltip
+              label={
+                task.is_committed
+                  ? t('flow.dwellNow', { days: dwellDays })
+                  : t('flow.dwellBacklog', { days: dwellDays })
+              }
+            >
+              <span
+                className={cn(
+                  'whitespace-nowrap text-meta tabular-nums',
+                  dwellWarn ? 'font-semibold text-fg' : 'text-fg-subtle',
+                )}
+              >
+                {dwellWarn ? '⚠ ' : ''}
+                {t('flow.dayShort', { days: dwellDays })}
+              </span>
+            </Tooltip>
+          ) : null}
+
           <span className="flex items-center opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+            {onShowTimeline ? (
+              <IconButton
+                label={t('flow.timelineTitle')}
+                size="sm"
+                onClick={() => onShowTimeline(task)}
+              >
+                <Icon name="history" size={13} />
+              </IconButton>
+            ) : null}
+            {!isDone && !task.is_committed && onCommit ? (
+              <IconButton
+                label={t('flow.pullIn')}
+                size="sm"
+                onClick={() => onCommit(task)}
+              >
+                <Icon name="arrow-right" size={13} />
+              </IconButton>
+            ) : null}
+            {!isDone && task.is_committed && onUncommit ? (
+              <IconButton
+                label={t('flow.sendBack')}
+                size="sm"
+                onClick={() => onUncommit(task)}
+              >
+                <Icon name="arrow-left" size={13} />
+              </IconButton>
+            ) : null}
             <IconButton
               label={t('common.edit')}
               size="sm"

@@ -37,6 +37,11 @@ export const queryKeys = {
     /** Prefix that matches every cached sub-task collection. */
     subtasksPrefix: ['tasks', 'subtasks'] as const,
   },
+  flow: {
+    all: ['flow'] as const,
+    summary: (workspaceId: number) => ['flow', 'summary', workspaceId] as const,
+    events: (taskId: number) => ['flow', 'events', taskId] as const,
+  },
   tags: {
     all: ['tags'] as const,
     list: (workspaceId: number) => ['tags', 'list', workspaceId] as const,

@@ -117,15 +117,25 @@ GET /api/v1/tasks/{id}/events/
 | 创建 / 勾选 / 批量完成 自动写事件 | `apps/todos/events.py` |
 | 23 条专项测试 | `tests/test_flow.py` |
 
-### ⬜ 待做（前端，约 2 人日）
+### ✅ 前端（已实现）
+
+| 内容 | 位置 |
+| --- | --- |
+| 两行 flow 条 + 服务端结论 | `components/flow/FlowStrip.tsx` |
+| 任务行停留天数（超限 `⚠`） | `TaskItem.tsx`（承诺上限 7 天 / backlog 上限来自 `backlog_aging_days`） |
+| 拉进 / 退回按钮（hover 显现） | `TaskItem.tsx` → `onCommit` / `onUncommit` |
+| Story 时间线面板（含耗时汇总） | `components/tasks/TaskTimelinePanel.tsx` |
+| 事件文案中英双语 | `i18n` 的 `flow.*` 命名空间 |
+
+**实测三种停留状态都对**：承诺 8 天 → `⚠ 8 天`；backlog 9 天 → `9 天`（未超限）；
+backlog 20 天 → `⚠ 20 天`。
+
+### ⬜ 仍待做
 
 | 内容 | 说明 |
 | --- | --- |
-| 顶部一行 flow 条 | `现在 4/14 · backlog 12 · 5 条超 14 天` + `message` |
-| 任务行上显示停留天数 | `age_days` / `now_days` 已由 API 返回 |
-| 「拉进现在 / 退回」按钮 | 已有接口 |
-| Story 时间线抽屉 | 调用 `/events/` |
-| 完成时的证据输入（可跳过） | 只有这一步值得强制一句话 |
+| 完成时强制一句证据（可跳过） | **刻意未做**：批量清账时弹 13 个框会把用户逼走。证据改为从时间线补记 |
+| 「现在」与 backlog 分段展示 | 当前仍按清单分组，"现在"靠徽标区分。是否需要独立分段待观察 |
 
 ### ⬜ 待做（MCP，约 0.5 人日）
 
