@@ -229,3 +229,50 @@ class TodoListClient:
         if not isinstance(payload, dict):
             raise TodoListError("批量更新任务的响应格式不符合预期。")
         return payload
+
+    def get_task(self, task_id: int) -> dict[str, Any]:
+        payload = self._request("GET", f"tasks/{task_id}/")
+        if not isinstance(payload, dict):
+            raise TodoListError(f"读取任务 {task_id} 的响应格式不符合预期。")
+        return payload
+
+    def update_task(self, task_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        result = self._request("PATCH", f"tasks/{task_id}/", body=payload)
+        if not isinstance(result, dict):
+            raise TodoListError(f"更新任务 {task_id} 的响应格式不符合预期。")
+        return result
+
+    def list_documents(self, workspace_id: int, **filters: Any) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"workspace": workspace_id}
+        params.update(filters)
+        return self._paginate("documents/", params)
+
+    def get_document(self, document_id: int) -> dict[str, Any]:
+        payload = self._request("GET", f"documents/{document_id}/")
+        if not isinstance(payload, dict):
+            raise TodoListError(f"读取文档 {document_id} 的响应格式不符合预期。")
+        return payload
+
+    def create_document(self, payload: dict[str, Any]) -> dict[str, Any]:
+        result = self._request("POST", "documents/", body=payload)
+        if not isinstance(result, dict):
+            raise TodoListError("创建文档的响应格式不符合预期。")
+        return result
+
+    def update_document(self, document_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        result = self._request("PATCH", f"documents/{document_id}/", body=payload)
+        if not isinstance(result, dict):
+            raise TodoListError(f"更新文档 {document_id} 的响应格式不符合预期。")
+        return result
+
+    def get_architecture(self, workspace_id: int) -> dict[str, Any]:
+        payload = self._request("GET", f"workspaces/{workspace_id}/architecture/")
+        if not isinstance(payload, dict):
+            raise TodoListError(f"读取工作区 {workspace_id} 架构图的响应格式不符合预期。")
+        return payload
+
+    def upsert_architecture(self, workspace_id: int, payload: dict[str, Any]) -> dict[str, Any]:
+        result = self._request("PUT", f"workspaces/{workspace_id}/architecture/", body=payload)
+        if not isinstance(result, dict):
+            raise TodoListError(f"更新工作区 {workspace_id} 架构图的响应格式不符合预期。")
+        return result

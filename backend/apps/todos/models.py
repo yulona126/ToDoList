@@ -1,4 +1,4 @@
-"""Domain models: Workspace → TaskList → Task (+ Tag, WorkspaceMember).
+"""Domain models: Workspace → TaskList → Task (+ Tag, Document, WorkspaceMember).
 
 Design notes
 ------------
@@ -11,6 +11,8 @@ Design notes
   bucket (a task without a list) stay cheap.
 * ``Task.parent`` allows exactly one extra level; the constraint is enforced in
   the serializer, keeping ordering and rendering simple.
+* ``Document`` holds workspace-native Markdown (plans / notes). Repo files stay
+  in git; optional ``path`` is only a pointer for later Project Brain work.
 """
 
 from __future__ import annotations
@@ -295,3 +297,113 @@ class Task(TimeStampedModel):
         )
         self.save(update_fields=["status", "completed_at", "updated_at"])
         return self
+
+
+def architecture_image_upload_to(instance: "ArchitectureDiagram", filename: str) -> str:
+    """Keep uploads namespaced by workspace id."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+    if ext not in {"png", "jpg", "jpeg", "webp", "svg", "gif"}:
+        ext = "bin"
+    return f"architecture/{instance.workspace_id}/diagram.{ext}"
+
+
+class ArchitectureDiagram(TimeStampedModel):
+    """Exactly one architecture diagram per workspace (Mermaid and/or image)."""
+
+    class Preferred(models.TextChoices):
+        MERMAID = "mermaid", "Mermaid"
+        IMAGE = "image", "Image"
+
+    workspace = models.OneToOneField(
+        Workspace,
+        on_delete=models.CASCADE,
+        related_name="architecture",
+    )
+    title = models.CharField(max_length=200, blank=True, default="")
+    # Editable source of truth for developer diagrams.
+    mermaid = models.TextField(blank=True, default="")
+    # Optional static export (draw.io / Excalidraw / screenshot).
+    image = models.FileField(
+        upload_to=architecture_image_upload_to,
+        blank=True,
+        null=True,
+        max_length=512,
+    )
+    preferred = models.CharField(
+        max_length=16,
+        choices=Preferred.choices,
+        default=Preferred.MERMAID,
+    )
+
+    class Meta:
+        ordering = ("-updated_at",)
+
+    def __str__(self) -> str:
+        return self.title or f"Architecture #{self.workspace_id}"
+
+    @property
+    def has_content(self) -> bool:
+        return bool(self.mermaid.strip()) or bool(self.image)
+
+
+class DocumentQuerySet(models.QuerySet["Document"]):
+    def for_user(self, user: "AbstractBaseUser") -> "DocumentQuerySet":
+        if not user or not user.is_authenticated:
+            return self.none()
+        return self.filter(workspace__in=Workspace.objects.for_user(user))
+
+    def active(self) -> "DocumentQuerySet":
+        return self.exclude(status=Document.Status.ARCHIVED)
+
+    def with_related(self) -> "DocumentQuerySet":
+        return self.select_related("workspace", "created_by").prefetch_related("tags")
+
+
+class Document(TimeStampedModel):
+    """Workspace-scoped Markdown document (plan / note / decision / spec)."""
+
+    class Kind(models.TextChoices):
+        PLAN = "plan", "Plan"
+        NOTE = "note", "Note"
+        DECISION = "decision", "Decision"
+        SPEC = "spec", "Spec"
+
+    class Status(models.TextChoices):
+        DRAFT = "draft", "Draft"
+        ACTIVE = "active", "Active"
+        ARCHIVED = "archived", "Archived"
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="documents"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="created_documents",
+    )
+
+    title = models.CharField(max_length=200)
+    body = models.TextField(blank=True, default="")
+    kind = models.CharField(max_length=16, choices=Kind.choices, default=Kind.PLAN)
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.ACTIVE
+    )
+    # Optional relative path when the same doc also lives in a git repo.
+    path = models.CharField(max_length=512, blank=True, default="")
+    sort_order = models.IntegerField(default=0)
+
+    tags = models.ManyToManyField(Tag, blank=True, related_name="documents")
+
+    objects = DocumentQuerySet.as_manager()
+
+    class Meta:
+        ordering = ("sort_order", "-updated_at")
+        indexes = [
+            models.Index(fields=["workspace", "status"]),
+            models.Index(fields=["workspace", "kind"]),
+        ]
+
+    def __str__(self) -> str:
+        return self.title

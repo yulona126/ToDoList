@@ -10,7 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 from rest_framework.filters import OrderingFilter
 
-from .models import Tag, Task, TaskList, Workspace
+from .models import Document, Tag, Task, TaskList, Workspace
 
 
 class CSVFilter(django_filters.BaseInFilter, django_filters.CharFilter):
@@ -169,3 +169,35 @@ class TaskOrderingFilter(OrderingFilter):
             name = self.FIELD_MAP.get(name, name)
             mapped.append(f"-{name}" if descending else name)
         return mapped
+
+
+class DocumentFilter(DefaultArchivedFilterMixin, django_filters.FilterSet):
+    workspace = django_filters.NumberFilter(field_name="workspace_id", required=True)
+    kind = CSVFilter(field_name="kind", lookup_expr="in")
+    status = CSVFilter(field_name="status", lookup_expr="in")
+    tag = django_filters.CharFilter(method="filter_tag")
+    search = django_filters.CharFilter(method="filter_search")
+    archived_param = "include_archived"
+    include_archived = django_filters.BooleanFilter(method="filter_include_archived")
+
+    class Meta:
+        model = Document
+        fields = ("workspace", "kind", "status")
+
+    def filter_include_archived(
+        self, queryset: Any, name: str, value: bool | None
+    ) -> Any:
+        if value:
+            return queryset
+        return queryset.exclude(status=Document.Status.ARCHIVED)
+
+    def filter_tag(self, queryset: Any, name: str, value: str) -> Any:
+        raw_ids = [part for part in str(value).split(",") if part.strip()]
+        for raw_id in raw_ids:
+            if not raw_id.strip().isdigit():
+                return queryset.none()
+            queryset = queryset.filter(tags__id=int(raw_id))
+        return queryset
+
+    def filter_search(self, queryset: Any, name: str, value: str) -> Any:
+        return queryset.filter(Q(title__icontains=value) | Q(body__icontains=value))

@@ -9,7 +9,15 @@ from django.db import models
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Tag, Task, TaskList, Workspace, WorkspaceMember
+from .models import (
+    ArchitectureDiagram,
+    Document,
+    Tag,
+    Task,
+    TaskList,
+    Workspace,
+    WorkspaceMember,
+)
 
 User = get_user_model()
 
@@ -362,3 +370,136 @@ class BulkActionSerializer(serializers.Serializer[Any]):
         if len(value) > 500:
             raise serializers.ValidationError("单次最多操作 500 条。")
         return value
+
+
+class ArchitectureDiagramSerializer(serializers.ModelSerializer[ArchitectureDiagram]):
+    """One-per-workspace architecture diagram (Mermaid + optional image)."""
+
+    image_url = serializers.SerializerMethodField()
+    has_content = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = ArchitectureDiagram
+        fields = (
+            "workspace",
+            "title",
+            "mermaid",
+            "image_url",
+            "preferred",
+            "has_content",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "workspace",
+            "image_url",
+            "has_content",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_image_url(self, obj: ArchitectureDiagram) -> str | None:
+        if not obj.image:
+            return None
+        # Relative `/media/…` so the SPA loads it same-origin through Nginx,
+        # regardless of docker-internal Host when building absolute URIs.
+        return obj.image.url
+
+    def validate_title(self, value: str) -> str:
+        return (value or "").strip()
+
+    def validate_preferred(self, value: str) -> str:
+        allowed = {c.value for c in ArchitectureDiagram.Preferred}
+        if value not in allowed:
+            raise serializers.ValidationError(
+                f"preferred 必须是 {'|'.join(sorted(allowed))}。"
+            )
+        return value
+
+
+class DocumentSerializer(serializers.ModelSerializer[Document]):
+    """Read + write representation of a workspace document (docs/api.md §5)."""
+
+    workspace_name = serializers.CharField(source="workspace.name", read_only=True)
+    tags = TagSerializer(many=True, read_only=True)
+    tag_ids = serializers.PrimaryKeyRelatedField(
+        many=True,
+        write_only=True,
+        required=False,
+        queryset=Tag.objects.all(),
+        source="tags",
+    )
+
+    class Meta:
+        model = Document
+        fields = (
+            "id",
+            "workspace",
+            "workspace_name",
+            "title",
+            "body",
+            "kind",
+            "status",
+            "path",
+            "sort_order",
+            "tags",
+            "tag_ids",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = (
+            "id",
+            "workspace_name",
+            "created_at",
+            "updated_at",
+        )
+
+    def validate_workspace(self, value: Workspace) -> Workspace:
+        user = self.context["request"].user
+        if not Workspace.objects.for_user(user).filter(pk=value.pk).exists():
+            raise serializers.ValidationError("工作区不存在。")
+        return value
+
+    def validate_title(self, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("文档标题不能为空。")
+        return value
+
+    def validate_path(self, value: str) -> str:
+        return (value or "").strip()
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        instance: Document | None = self.instance
+        workspace: Workspace | None = attrs.get("workspace") or (
+            instance.workspace if instance else None
+        )
+        if workspace is None:
+            raise serializers.ValidationError({"workspace": ["该字段为必填项。"]})
+
+        tag_list = attrs.get("tags")
+        if tag_list:
+            mismatched = [tag.name for tag in tag_list if tag.workspace_id != workspace.id]
+            if mismatched:
+                raise serializers.ValidationError(
+                    {"tag_ids": [f"标签 {name} 不属于该工作区。" for name in mismatched]}
+                )
+        return attrs
+
+    def create(self, validated_data: dict[str, Any]) -> Document:
+        request = self.context.get("request")
+        if request is not None and getattr(request, "user", None) is not None:
+            validated_data.setdefault("created_by", request.user)
+        if validated_data.get("sort_order") in (None, 0):
+            validated_data["sort_order"] = self._next_sort_order(validated_data["workspace"])
+        return super().create(validated_data)
+
+    @staticmethod
+    def _next_sort_order(workspace: Workspace) -> int:
+        last = (
+            Document.objects.filter(workspace=workspace)
+            .order_by("-sort_order")
+            .values_list("sort_order", flat=True)
+            .first()
+        )
+        return (last or 0) + 1

@@ -122,20 +122,26 @@ chmod 600 ~/.config/todolist/env
 > 若用 B，务必确认 `.cursor/mcp.json` 已被 gitignore，否则 token 会进版本库。
 
 改完在 Cursor 里重新加载 MCP（`Cmd/Ctrl+Shift+P` → `Reload Window`，
-或在 Customize → MCP 里点刷新）。连上后 Cursor 会列出 `todolist` 提供的 4 个工具。
+或在 Customize → MCP 里点刷新）。连上后 Cursor 会列出 `todolist` 提供的工具。
 
 ---
 
-## 4. 暴露的四个工具
+## 4. 暴露的工具
 
-工具描述本身也占用模型上下文，所以刻意只留 4 个。
+工具描述本身也占用模型上下文，所以表面保持精简：任务 4 个 + 文档 3 个。
 
 | 工具 | 作用 | 典型调用时机 |
 | --- | --- | --- |
 | `list_workspaces()` | 列出所有工作区 + 任务计数 | 每次会话第一步，用来确定 workspace_id |
 | `get_tasks(workspace_id, status?, due?, include_done?, search?)` | **主工具**。返回紧凑 Markdown，按清单分组，含任务 id | 拉取要写进计划的内容 |
-| `create_tasks(workspace_id, tasks[])` | 批量创建（支持 `tag_names`、`subtasks`） | 计划里产生了新事项，写回 ToDoList |
-| `update_tasks(task_ids[], action)` | `done` / `todo` / `archive` | 计划整理完，把完成的划掉 |
+| `create_tasks(workspace_id, tasks[])` | 批量创建（支持 `description`、`tag_names`、`subtasks`） | 计划里产生了新事项，写回 ToDoList |
+| `update_tasks(task_ids[], action)` | 批量改状态：`done` / `todo` / `archive` | 计划整理完，把完成的划掉 |
+| `update_task(task_id, fields{})` | 改单条标题/描述/状态/优先级/类型/截止日/清单等 | 「把描述补上」「改成高优」 |
+| `list_documents(workspace_id, kind?, status?, …)` | 列出工作区文档摘要 | 整理计划前先看是否已有 plan |
+| `get_document(document_id)` | 读取一篇文档全文 | 更新已有计划前先读 |
+| `upsert_document(workspace_id, title, body, …)` | 创建或更新文档（`document_id` 有则更新） | 把开发计划写回 Workspace |
+| `get_architecture(workspace_id)` | 读取工作区唯一架构图 | 改代码前看系统结构 |
+| `upsert_architecture(workspace_id, mermaid, …)` | 覆盖写入 Mermaid 架构图 | 把讨论出的架构图存回 |
 
 `get_tasks` 的输出形如：
 
@@ -170,16 +176,18 @@ Skill 和 MCP 是两件事：
 | 你说 | 会发生什么 |
 | --- | --- |
 | 「整理一下这个版本的开发计划」 | 拉取任务 → 按清单写进计划文档 |
-| 「把 todolist 导入这个项目」 | `list_workspaces` → 生成 `TODO.md` |
+| 「把 todolist 导入这个项目」 | `list_workspaces` → `get_tasks` → `upsert_document(kind=plan)` |
 | 「这个版本还剩什么没做」 | `get_tasks(status=todo,doing)` → 汇报 |
 | 「把这几条加进 todolist」 | `create_tasks` 写回 |
+| 「整理开发计划并保存」 | `get_tasks` → `list_documents` → `upsert_document` |
 
 Skill 里明确写了几条硬规则：
 
-- **绝不臆造任务 id** —— id 只能来自 `get_tasks` 的返回
+- **绝不臆造任务 / 文档 id** —— id 只能来自工具返回
 - **先读后写** —— 不在没有 `list_workspaces` 的情况下猜 workspace_id
 - **含糊就问** —— 多个工作区时先问用户，不擅自选
-- 输出里保留任务 id，方便后续更新
+- 输出里保留任务 id / doc id，方便后续更新
+- 开发计划默认写进 Document，不要只落到本地 markdown
 
 Skill 目录（已按 Cursor 官方约定核对）：
 

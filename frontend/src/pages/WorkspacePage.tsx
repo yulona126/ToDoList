@@ -290,6 +290,22 @@ export function WorkspacePage() {
 
         <div className="flex items-center gap-2">
           <Button
+            variant="secondary"
+            iconLeft={<Icon name="compass" size={14} />}
+            onClick={() => navigate(`/w/${workspaceId}/architecture`)}
+          >
+            {t('architecture.title')}
+          </Button>
+
+          <Button
+            variant="secondary"
+            iconLeft={<Icon name="file" size={14} />}
+            onClick={() => navigate(`/w/${workspaceId}/docs`)}
+          >
+            {t('document.title')}
+          </Button>
+
+          <Button
             variant="primary"
             iconLeft={<Icon name="plus" size={14} />}
             onClick={openCreate}
@@ -321,11 +337,11 @@ export function WorkspacePage() {
       </header>
 
       {focusedListId !== null ? (
-        <div>
+        <div className="-ml-1">
           <Button
             variant="ghost"
             size="sm"
-            iconLeft={<Icon name="chevron-right" size={12} />}
+            iconLeft={<Icon name="arrow-left" size={16} strokeWidth={1.75} />}
             onClick={() => navigate(`/w/${workspaceId}`)}
           >
             {t('nav.backToWorkspace')}

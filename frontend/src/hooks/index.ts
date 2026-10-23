@@ -23,6 +23,20 @@ export {
 export { useSubtasks } from './useSubtasks';
 export { useTags, useCreateTag, useDeleteTag } from './useTags';
 export {
+  useDocuments,
+  useDocument,
+  useCreateDocument,
+  useUpdateDocument,
+  useDeleteDocument,
+} from './useDocuments';
+export {
+  useArchitecture,
+  useUpdateArchitecture,
+  useUploadArchitectureImage,
+  useDeleteArchitectureImage,
+  useDeleteArchitecture,
+} from './useArchitecture';
+export {
   useAiCredential,
   useUpdateAiCredential,
   useDeleteAiCredential,

@@ -14,7 +14,7 @@
 2. [前置条件](#2-前置条件)
 3. [安装（4 步）](#3-安装4-步)
 4. [日常怎么用](#4-日常怎么用)
-5. [四个工具](#5-四个工具)
+5. [工具一览](#5-工具一览)
 6. [排错](#6-排错)
 7. [更新与卸载](#7-更新与卸载)
 8. [安全须知](#8-安全须知)
@@ -124,11 +124,12 @@ chmod 600 ~/.config/todolist/mcp.env
 ### 拉进项目
 
 ```
-你：用 todolist 里 PowerArena 这个版本的任务，帮我整理一份开发计划写到 PLAN.md
-Cursor：[调用 list_workspaces → get_tasks] → 生成 PLAN.md
+你：用 todolist 里 PowerArena 这个版本的任务，帮我整理一份开发计划并保存
+Cursor：[调用 list_workspaces → get_tasks → list_documents → upsert_document(kind=plan)]
 ```
 
-写进文件的计划里会带上任务 id（如 `#152`），方便后续更新。
+计划默认写进工作区 **文档**（网页端「文档」也能看到），正文里保留任务 id（如 `#152`）。
+用户明确要求本地文件时，也可以额外写 `PLAN.md`。
 
 ### 写回 ToDoList
 
@@ -151,14 +152,20 @@ Cursor：[调用 update_tasks([152,156], "done")] → 标记完成：更新 2 �
 
 ---
 
-## 5. 四个工具
+## 5. 工具一览
 
 | 工具 | 参数 | 作用 |
 | --- | --- | --- |
 | `list_workspaces` | — | 列出所有工作区 + 任务计数（含已归档，标 `[已归档]`） |
 | `get_tasks` | `workspace_id`, `status?`, `due?`, `include_done?`, `search?` | **主工具**，返回紧凑 Markdown |
-| `create_tasks` | `workspace_id`, `tasks[]` | 批量创建，`tasks` 支持 `title` / `task_list` / `priority` / `task_type` / `due_date` / `tag_names` / `subtasks` |
-| `update_tasks` | `task_ids[]`, `action` | `action` ∈ `done` \| `todo` \| `archive` |
+| `create_tasks` | `workspace_id`, `tasks[]` | 批量创建，支持 `title` / `description` / `task_list` / `priority` / `task_type` / `due_date` / `tag_names` / `subtasks` |
+| `update_tasks` | `task_ids[]`, `action` | 批量改状态：`done` \| `todo` \| `archive` |
+| `update_task` | `task_id`, `fields{}` | 改单条字段：`title` / `description` / `status` / `priority` / `task_type` / `due_date` / `task_list` / `is_archived` |
+| `list_documents` | `workspace_id`, `kind?`, `status?`, `search?`, `include_archived?` | 列出计划/笔记等文档摘要 |
+| `get_document` | `document_id` | 读取一篇文档全文 |
+| `upsert_document` | `workspace_id`, `title?`, `body?`, `kind?`, `status?`, `path?`, `document_id?` | 创建或更新文档（有 `document_id` 则更新） |
+| `get_architecture` | `workspace_id` | 读取该工作区唯一架构图（Mermaid） |
+| `upsert_architecture` | `workspace_id`, `mermaid?`, `title?`, `preferred?` | 覆盖写入架构图 Mermaid（图片请网页上传） |
 
 `get_tasks` 的返回长这样：
 
@@ -174,9 +181,7 @@ Cursor：[调用 update_tasks([152,156], "done")] → 标记完成：更新 2 �
 ```
 
 刻意用 Markdown 而不是 JSON：**同样的信息，JSON 大约多花 30–40% token**。
-任务 id 一定带上，因为后续 `update_tasks` 要用它。
-
-> 工具只有 4 个也是刻意的——工具定义本身占用模型上下文。
+任务 id / 文档 id 一定带上，因为后续写回要用它们。
 
 ---
 
@@ -293,7 +298,7 @@ rm -f ~/.config/todolist/mcp.env
   默认方案用 `envFile` 就是为了避免这件事。
 - **MCP server 不直连数据库**，所有读写都走 REST API，权限和网页端完全一致，
   跨用户访问仍然是 404。
-- **`create_tasks` / `update_tasks` 会真的改数据。** 让 Cursor 写回前先看一眼它要建什么。
+- **`create_tasks` / `update_tasks` / `update_task` 会真的改数据。** 让 Cursor 写回前先看一眼它要建/改什么。
 - 怀疑泄露：**设置 → API Tokens → 撤销**，立刻失效。
 
 ---

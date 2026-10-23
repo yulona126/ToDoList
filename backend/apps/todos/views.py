@@ -13,7 +13,7 @@ from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.filters import SearchFilter
+from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.request import Request
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
@@ -22,15 +22,26 @@ from apps.common.mixins import ScopedDetailMixin
 from apps.common.permissions import IsObjectOwnerOrMember
 
 from .filters import (
+    DocumentFilter,
     TagFilter,
     TaskFilter,
     TaskListFilter,
     TaskOrderingFilter,
     WorkspaceFilter,
 )
-from .models import Tag, Task, TaskList, Workspace, WorkspaceMember
+from .models import (
+    ArchitectureDiagram,
+    Document,
+    Tag,
+    Task,
+    TaskList,
+    Workspace,
+    WorkspaceMember,
+)
 from .serializers import (
+    ArchitectureDiagramSerializer,
     BulkActionSerializer,
+    DocumentSerializer,
     ListReorderSerializer,
     ReorderSerializer,
     TagSerializer,
@@ -39,6 +50,17 @@ from .serializers import (
     WorkspaceMemberSerializer,
     WorkspaceSerializer,
 )
+
+ALLOWED_ARCHITECTURE_IMAGE_TYPES = {
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "image/svg+xml",
+    "image/gif",
+}
+ALLOWED_ARCHITECTURE_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp", ".svg", ".gif"}
+MAX_ARCHITECTURE_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MiB
 from .services import bulk_create_tasks
 
 
@@ -104,6 +126,129 @@ class WorkspaceViewSet(viewsets.ModelViewSet[Workspace]):
         if page is not None:
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
+
+    def _architecture_or_empty(self, workspace: Workspace) -> ArchitectureDiagram | None:
+        try:
+            return workspace.architecture
+        except ArchitectureDiagram.DoesNotExist:
+            return None
+
+    @extend_schema(
+        responses={200: ArchitectureDiagramSerializer},
+        description="Get the workspace architecture diagram (empty shell if none yet).",
+    )
+    @action(detail=True, methods=["get", "put", "delete"], url_path="architecture")
+    def architecture(self, request: Request, pk: str | None = None) -> Response:
+        workspace = self.get_object()
+        diagram = self._architecture_or_empty(workspace)
+
+        if request.method == "GET":
+            if diagram is None:
+                return Response(
+                    {
+                        "workspace": workspace.id,
+                        "title": "",
+                        "mermaid": "",
+                        "image_url": None,
+                        "preferred": ArchitectureDiagram.Preferred.MERMAID,
+                        "has_content": False,
+                        "created_at": None,
+                        "updated_at": None,
+                    }
+                )
+            return Response(
+                ArchitectureDiagramSerializer(diagram, context={"request": request}).data
+            )
+
+        if request.method == "DELETE":
+            if diagram is not None:
+                if diagram.image:
+                    diagram.image.delete(save=False)
+                diagram.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        # PUT — upsert Mermaid / title / preferred (image via separate action).
+        serializer = ArchitectureDiagramSerializer(
+            diagram,
+            data=request.data,
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        if diagram is None:
+            diagram = ArchitectureDiagram(workspace=workspace)
+        for field in ("title", "mermaid", "preferred"):
+            if field in serializer.validated_data:
+                setattr(diagram, field, serializer.validated_data[field])
+        diagram.save()
+        return Response(
+            ArchitectureDiagramSerializer(diagram, context={"request": request}).data
+        )
+
+    @extend_schema(
+        request={"multipart/form-data": {"type": "object", "properties": {"image": {"type": "string", "format": "binary"}}}},
+        responses={200: ArchitectureDiagramSerializer},
+        description="Upload or replace the architecture image (png/jpg/webp/svg, ≤5MB).",
+    )
+    @action(
+        detail=True,
+        methods=["post", "delete"],
+        url_path="architecture/image",
+    )
+    def architecture_image(self, request: Request, pk: str | None = None) -> Response:
+        workspace = self.get_object()
+        diagram = self._architecture_or_empty(workspace)
+
+        if request.method == "DELETE":
+            if diagram is not None and diagram.image:
+                diagram.image.delete(save=False)
+                diagram.image = None
+                if diagram.preferred == ArchitectureDiagram.Preferred.IMAGE:
+                    diagram.preferred = ArchitectureDiagram.Preferred.MERMAID
+                diagram.save(update_fields=["image", "preferred", "updated_at"])
+            if diagram is None:
+                return Response(
+                    {
+                        "workspace": workspace.id,
+                        "title": "",
+                        "mermaid": "",
+                        "image_url": None,
+                        "preferred": ArchitectureDiagram.Preferred.MERMAID,
+                        "has_content": False,
+                        "created_at": None,
+                        "updated_at": None,
+                    }
+                )
+            return Response(
+                ArchitectureDiagramSerializer(diagram, context={"request": request}).data
+            )
+
+        upload = request.FILES.get("image")
+        if upload is None:
+            raise ValidationError({"image": ["请选择要上传的图片文件。"]})
+        if upload.size and upload.size > MAX_ARCHITECTURE_IMAGE_BYTES:
+            raise ValidationError({"image": ["图片不能超过 5MB。"]})
+
+        name = (upload.name or "").lower()
+        content_type = (getattr(upload, "content_type", None) or "").lower()
+        ext_ok = any(name.endswith(ext) for ext in ALLOWED_ARCHITECTURE_IMAGE_EXTS)
+        type_ok = content_type in ALLOWED_ARCHITECTURE_IMAGE_TYPES or content_type == ""
+        if not ext_ok and not type_ok:
+            raise ValidationError(
+                {"image": ["仅支持 png / jpg / webp / svg / gif。"]}
+            )
+
+        if diagram is None:
+            diagram = ArchitectureDiagram(workspace=workspace)
+            diagram.save()
+        if diagram.image:
+            diagram.image.delete(save=False)
+        diagram.image = upload
+        diagram.preferred = ArchitectureDiagram.Preferred.IMAGE
+        diagram.save()
+        return Response(
+            ArchitectureDiagramSerializer(diagram, context={"request": request}).data
+        )
 
 
 class TaskListViewSet(ScopedDetailMixin, viewsets.ModelViewSet[TaskList]):
@@ -434,3 +579,17 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
                 queryset.delete()
 
         return Response({"updated": updated}, status=status.HTTP_200_OK)
+
+
+class DocumentViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Document]):
+    """`/api/v1/documents/` — workspace-native Markdown documents."""
+
+    serializer_class = DocumentSerializer
+    permission_classes = [IsAuthenticated, IsObjectOwnerOrMember]
+    filterset_class = DocumentFilter
+    filter_backends = (DjangoFilterBackend, OrderingFilter)
+    ordering_fields = ("sort_order", "created_at", "updated_at", "title", "kind", "status")
+    ordering = ("sort_order", "-updated_at")
+
+    def get_queryset(self) -> Any:
+        return Document.objects.for_user(self.request.user).with_related()

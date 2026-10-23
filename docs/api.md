@@ -46,6 +46,8 @@ TaskPriority    : low | medium | high | urgent
 TaskType        : dev | meeting | communication | design | research | other
 WorkspaceVis    : private | shared
 MemberRole      : owner | admin | member | viewer
+DocumentKind    : plan | note | decision | spec
+DocumentStatus  : draft | active | archived
 ```
 
 ---
@@ -186,6 +188,32 @@ MemberRole      : owner | admin | member | viewer
 ```
 
 > V1 只会返回 owner 自己；接口形态已按共享语义固定，V1.1 直接复用。
+
+### GET / PUT / DELETE `/workspaces/{id}/architecture/`
+
+每个工作区**恰好一份**架构图（没有则 GET 返回空壳，`has_content=false`）。
+
+```jsonc
+// GET / PUT 响应
+{
+  "workspace": 1,
+  "title": "系统架构",
+  "mermaid": "flowchart LR\n  A --> B",
+  "image_url": null,                 // 有上传图时为绝对 URL
+  "preferred": "mermaid",            // mermaid | image
+  "has_content": true,
+  "created_at": "...", "updated_at": "..."
+}
+
+// PUT 请求（均可选，部分更新）
+{ "title": "系统架构", "mermaid": "flowchart LR\n  A --> B", "preferred": "mermaid" }
+```
+
+DELETE → 204，清空 Mermaid 与图片。
+
+### POST / DELETE `/workspaces/{id}/architecture/image/`
+
+`multipart/form-data`，字段名 `image`；支持 png/jpg/webp/svg/gif，≤5MB。上传即替换（每工作区一张）。DELETE 只移除图片。
 
 ---
 
@@ -340,6 +368,46 @@ DELETE → 204。该清单下的任务**不删除**，其 `task_list` 置为 `nu
 
 ---
 
+## 5.1 文档 `/documents`
+
+工作区原生 Markdown 文档（计划 / 笔记 / 决策 / 规格）。正文存库；可选 `path` 仅作仓库指针，不替代 git 文件。
+
+### GET `/documents/?workspace={id}` · `workspace` 必填
+
+| 参数 | 说明 |
+| --- | --- |
+| `workspace` | **必填**，工作区 id |
+| `kind` | 逗号分隔：`plan` \| `note` \| `decision` \| `spec` |
+| `status` | 逗号分隔：`draft` \| `active` \| `archived` |
+| `tag` | 标签 id，逗号分隔（AND） |
+| `search` | 对 `title`、`body` 做 icontains |
+| `include_archived` | 默认 `false`（隐藏 `status=archived`） |
+| `ordering` | 默认 `sort_order,-updated_at` |
+
+```jsonc
+{ "count": 2, "next": null, "previous": null,
+  "results": [{
+    "id": 3, "workspace": 1, "workspace_name": "ToDoList v1",
+    "title": "v1 里程碑计划", "body": "- [ ] #158 确定缓存策略\n",
+    "kind": "plan", "status": "active", "path": "",
+    "sort_order": 1, "tags": [],
+    "created_at": "...", "updated_at": "..."
+  }] }
+```
+
+### POST `/documents/`
+
+```jsonc
+{ "workspace": 1, "title": "v1 里程碑计划", "body": "...", "kind": "plan",
+  "status": "draft", "path": "", "tag_ids": [3] }   // 201
+```
+
+### GET / PATCH / DELETE `/documents/{id}/`
+
+DELETE → 204。
+
+---
+
 ## 6. AI 助手 `/ai` · 另见 [ai-assistant.md](ai-assistant.md)
 
 全部需认证。API Key 由服务端加密保存，**接口永不返回明文**（只回 `key_mask`）。
@@ -427,5 +495,6 @@ DELETE → 204。该清单下的任务**不删除**，其 `task_list` 置为 `nu
 | 勾选完成 | `POST /tasks/{id}/toggle/` |
 | 添加子任务 | `POST /tasks/` 带 `parent` |
 | 展开子任务 | `GET /tasks/?workspace=&parent={id}` |
+| 文档列表 / 编辑 | `GET /documents/?workspace=` · `POST/PATCH /documents/` |
 | AI 录入 | `POST /ai/parse/` → 确认 → `POST /tasks/bulk-create/` |
 | 本地标记录入 | `POST /ai/parse/`（`source: "local"`，0 token） |

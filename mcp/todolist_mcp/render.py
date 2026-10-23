@@ -89,7 +89,20 @@ def _task_line(task: Mapping[str, Any], *, indent: str = "") -> str:
         line += f" · #{tag}"
     if task.get("is_archived"):
         line += " · [已归档]"
+
+    description = str(task.get("description") or "").strip()
+    if description:
+        # Keep list output compact: one folded line under the title.
+        folded = " ".join(description.split())
+        if len(folded) > 160:
+            folded = folded[:157] + "…"
+        return f"{indent}{line}\n{indent}  desc: {folded}"
     return f"{indent}{line}"
+
+
+def render_update_task_result(task: Mapping[str, Any], changed: Sequence[str]) -> str:
+    fields = "、".join(changed) if changed else "（无字段）"
+    return f"已更新任务 #{_as_int(task.get('id'))}（{fields}）：\n{_task_line(task)}"
 
 
 def _tag_names(task: Mapping[str, Any]) -> list[str]:
@@ -167,3 +180,85 @@ def render_bulk_create_result(
 def render_bulk_action_result(action: str, task_ids: Sequence[int], updated: int) -> str:
     label = {"done": "标记完成", "todo": "改回待办", "archive": "归档"}.get(action, action)
     return f"{label}：更新 {updated}/{len(task_ids)} 条任务（ids: {', '.join(str(i) for i in task_ids)}）。"
+
+
+KIND_ZH = {"plan": "计划", "note": "笔记", "decision": "决策", "spec": "规格"}
+DOC_STATUS_ZH = {"draft": "草稿", "active": "生效", "archived": "已归档"}
+
+
+def _doc_summary_line(doc: Mapping[str, Any]) -> str:
+    kind = KIND_ZH.get(str(doc.get("kind") or "plan"), str(doc.get("kind") or ""))
+    status = DOC_STATUS_ZH.get(str(doc.get("status") or "active"), str(doc.get("status") or ""))
+    title = str(doc.get("title") or "").strip() or "(无标题)"
+    line = f"- #{_as_int(doc.get('id'))} [{kind}/{status}] {title}"
+    path = str(doc.get("path") or "").strip()
+    if path:
+        line += f" · `{path}`"
+    updated = str(doc.get("updated_at") or "")[:10]
+    if updated:
+        line += f" · {updated}"
+    return line
+
+
+def render_documents(
+    workspace: Mapping[str, Any], documents: Sequence[Mapping[str, Any]]
+) -> str:
+    workspace_name = str(workspace.get("name") or workspace.get("id") or "")
+    header = (
+        f"# {workspace_name} 文档 (workspace={_as_int(workspace.get('id'))}) "
+        f"· {len(documents)} 篇"
+    )
+    if not documents:
+        return (
+            f"{header}\n\n没有符合条件的文档。"
+            "可用 upsert_document 新建 plan/note，或放宽 kind/status/search。"
+        )
+    lines = [header, ""]
+    lines.extend(_doc_summary_line(doc) for doc in documents)
+    return "\n".join(lines)
+
+
+def render_document(doc: Mapping[str, Any]) -> str:
+    kind = KIND_ZH.get(str(doc.get("kind") or "plan"), str(doc.get("kind") or ""))
+    status = DOC_STATUS_ZH.get(str(doc.get("status") or "active"), str(doc.get("status") or ""))
+    title = str(doc.get("title") or "").strip() or "(无标题)"
+    lines = [
+        f"# {title}",
+        f"doc#{_as_int(doc.get('id'))} · {kind} · {status} · workspace={_as_int(doc.get('workspace'))}",
+    ]
+    path = str(doc.get("path") or "").strip()
+    if path:
+        lines.append(f"path: `{path}`")
+    lines.append("")
+    body = str(doc.get("body") or "")
+    lines.append(body if body else "（正文为空）")
+    return "\n".join(lines)
+
+
+def render_upsert_document_result(created: bool, doc: Mapping[str, Any]) -> str:
+    verb = "已创建" if created else "已更新"
+    return f"{verb}文档：\n{render_document(doc)}"
+
+
+def render_architecture(diagram: Mapping[str, Any]) -> str:
+    workspace_id = _as_int(diagram.get("workspace"))
+    title = str(diagram.get("title") or "").strip() or "(无标题)"
+    preferred = str(diagram.get("preferred") or "mermaid")
+    has_content = bool(diagram.get("has_content"))
+    image_url = str(diagram.get("image_url") or "").strip()
+    mermaid = str(diagram.get("mermaid") or "")
+    lines = [
+        f"# 架构图 · workspace={workspace_id}",
+        f"title: {title}",
+        f"preferred: {preferred} · has_content: {'yes' if has_content else 'no'}",
+    ]
+    if image_url:
+        lines.append(f"image: {image_url}")
+    lines.append("")
+    if mermaid.strip():
+        lines.append("```mermaid")
+        lines.append(mermaid.rstrip())
+        lines.append("```")
+    else:
+        lines.append("（尚无 Mermaid 源码）")
+    return "\n".join(lines)

@@ -26,7 +26,15 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
   const { theme, toggleTheme, language, toggleLanguage, push } = useUI();
   const { user, logout } = useAuth();
 
-  const inWorkspace = workspaceIdFromPath(location.pathname) !== null;
+  const workspaceId = workspaceIdFromPath(location.pathname);
+  const inWorkspace = workspaceId !== null;
+  const path = location.pathname;
+  const onTasks =
+    inWorkspace &&
+    (path === `/w/${workspaceId}` || path.startsWith(`/w/${workspaceId}/l/`));
+  const onDocs = inWorkspace && path.startsWith(`/w/${workspaceId}/docs`);
+  const onArchitecture =
+    inWorkspace && path.startsWith(`/w/${workspaceId}/architecture`);
   const search = searchParams.get('q') ?? '';
 
   /* `/` focuses this input — see lib/focusBus.ts. The compact search in the
@@ -72,7 +80,7 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
   ];
 
   return (
-    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-bg px-3 md:px-6">
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-bg px-3 md:px-4">
       <IconButton
         label={t('nav.openMenu')}
         onClick={onOpenSidebar}
@@ -83,8 +91,57 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
 
       <WorkspaceSwitcher />
 
+      {inWorkspace && workspaceId !== null ? (
+        <nav
+          aria-label={t('nav.workspaceNav')}
+          className="ml-1 flex h-8 shrink-0 items-center gap-1 border-l border-border pl-2"
+        >
+          {(
+            [
+              {
+                id: 'tasks',
+                label: t('nav.tasks'),
+                icon: 'inbox' as const,
+                active: onTasks,
+                to: `/w/${workspaceId}`,
+              },
+              {
+                id: 'docs',
+                label: t('nav.documents'),
+                icon: 'file' as const,
+                active: onDocs,
+                to: `/w/${workspaceId}/docs`,
+              },
+              {
+                id: 'architecture',
+                label: t('nav.architecture'),
+                icon: 'compass' as const,
+                active: onArchitecture,
+                to: `/w/${workspaceId}/architecture`,
+              },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => navigate(item.to)}
+              className={cn(
+                'inline-flex h-8 items-center gap-1.5 rounded-control px-2.5',
+                'text-secondary motion-safe-150',
+                item.active
+                  ? 'bg-surface-muted font-medium text-fg'
+                  : 'text-fg-muted hover:bg-surface-muted hover:text-fg',
+              )}
+            >
+              <Icon name={item.icon} size={15} />
+              <span className="hidden sm:inline">{item.label}</span>
+            </button>
+          ))}
+        </nav>
+      ) : null}
+
       {inWorkspace ? (
-        <div className="mx-1 hidden min-w-0 flex-1 justify-end sm:flex">
+        <div className="mx-1 hidden min-w-0 flex-1 justify-end md:flex">
           <Input
             ref={searchInputRef}
             type="search"

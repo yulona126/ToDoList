@@ -236,6 +236,12 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   if (accessToken) {
     config.headers.set('Authorization', `Bearer ${accessToken}`);
   }
+  // Default Content-Type is application/json. For FormData uploads the browser
+  // must set multipart/form-data *with* a boundary — otherwise Django sees an
+  // empty FILES dict and returns 400.
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+    config.headers.delete('Content-Type');
+  }
   return config;
 });
 

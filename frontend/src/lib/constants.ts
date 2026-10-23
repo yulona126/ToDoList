@@ -76,6 +76,46 @@ export const MEMBER_ROLE_VALUES: readonly MemberRole[] = [
   MemberRole.Viewer,
 ];
 
+export const DocumentKind = {
+  Plan: 'plan',
+  Note: 'note',
+  Decision: 'decision',
+  Spec: 'spec',
+} as const;
+export type DocumentKind = (typeof DocumentKind)[keyof typeof DocumentKind];
+export const DOCUMENT_KIND_VALUES: readonly DocumentKind[] = [
+  DocumentKind.Plan,
+  DocumentKind.Note,
+  DocumentKind.Decision,
+  DocumentKind.Spec,
+];
+
+export const DocumentStatus = {
+  Draft: 'draft',
+  Active: 'active',
+  Archived: 'archived',
+} as const;
+export type DocumentStatus =
+  (typeof DocumentStatus)[keyof typeof DocumentStatus];
+export const DOCUMENT_STATUS_VALUES: readonly DocumentStatus[] = [
+  DocumentStatus.Draft,
+  DocumentStatus.Active,
+  DocumentStatus.Archived,
+];
+
+export const DOCUMENT_KIND_LABEL_KEY: Record<DocumentKind, string> = {
+  plan: 'document.kindPlan',
+  note: 'document.kindNote',
+  decision: 'document.kindDecision',
+  spec: 'document.kindSpec',
+};
+
+export const DOCUMENT_STATUS_LABEL_KEY: Record<DocumentStatus, string> = {
+  draft: 'document.statusDraft',
+  active: 'document.statusActive',
+  archived: 'document.statusArchived',
+};
+
 /** UI-only convenience for the `due` query param (api.md §4). */
 export const DueFilter = {
   All: 'all',

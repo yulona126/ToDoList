@@ -28,6 +28,7 @@ export type IconName =
   | 'menu'
   | 'inbox'
   | 'folder'
+  | 'file'
   | 'download'
   | 'refresh'
   | 'alert'
@@ -36,7 +37,13 @@ export type IconName =
   | 'compass'
   | 'dot'
   | 'filter'
-  | 'design';
+  | 'design'
+  | 'zoom-in'
+  | 'zoom-out'
+  | 'maximize'
+  | 'minimize'
+  | 'expand'
+  | 'arrow-left';
 
 const PATHS: Record<IconName, ReactNode> = {
   plus: <path d="M12 5v14M5 12h14" />,
@@ -117,6 +124,12 @@ const PATHS: Record<IconName, ReactNode> = {
   folder: (
     <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2Z" />
   ),
+  file: (
+    <>
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 2v6h6" />
+    </>
+  ),
   filter: <path d="M3 5h18l-7 8v6l-4 2v-8L3 5Z" />,
   download: (
     <>
@@ -153,6 +166,34 @@ const PATHS: Record<IconName, ReactNode> = {
       <circle cx="12" cy="12" r="4" />
     </>
   ),
+  'zoom-in': (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.6-3.6M11 8v6M8 11h6" />
+    </>
+  ),
+  'zoom-out': (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.6-3.6M8 11h6" />
+    </>
+  ),
+  maximize: (
+    <>
+      <path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3" />
+    </>
+  ),
+  minimize: (
+    <>
+      <path d="M8 3v3a2 2 0 0 1-2 2H3M16 3v3a2 2 0 0 0 2 2h3M8 21v-3a2 2 0 0 0-2-2H3M16 21v-3a2 2 0 0 1 2-2h3" />
+    </>
+  ),
+  expand: (
+    <>
+      <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+    </>
+  ),
+  'arrow-left': <path d="M19 12H5M12 19l-7-7 7-7" />,
 };
 
 export interface IconProps extends Omit<ComponentPropsWithRef<'svg'>, 'name'> {

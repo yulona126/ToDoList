@@ -11,6 +11,8 @@ import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ArchitecturePage } from './pages/ArchitecturePage';
+import { DocumentsPage } from './pages/DocumentsPage';
 import { WorkspacePage } from './pages/WorkspacePage';
 import { useAuth } from './stores/AuthContext';
 
@@ -21,6 +23,8 @@ import { useAuth } from './stores/AuthContext';
  *   /                       most recent workspace, else onboarding empty state
  *   /w/:workspaceId         task board
  *   /w/:workspaceId/l/:listId  focused list
+ *   /w/:workspaceId/docs[/:docId]  workspace documents
+ *   /w/:workspaceId/architecture   one architecture diagram
  *   /settings               account, theme, language, password
  *   *                       404
  */
@@ -45,6 +49,15 @@ export default function App() {
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/w/:workspaceId" element={<WorkspacePage />} />
           <Route path="/w/:workspaceId/l/:listId" element={<WorkspacePage />} />
+          <Route path="/w/:workspaceId/docs" element={<DocumentsPage />} />
+          <Route
+            path="/w/:workspaceId/docs/:docId"
+            element={<DocumentsPage />}
+          />
+          <Route
+            path="/w/:workspaceId/architecture"
+            element={<ArchitecturePage />}
+          />
           <Route path="/settings" element={<SettingsPage />} />
         </Route>
       </Route>

@@ -168,10 +168,11 @@ AI 输出被当作**不可信输入**，必须经 `services.normalize_drafts` �
 
 ```
 User ──1:N──► Workspace ──1:N──► TaskList ──1:N──► Task ──N:M──► Tag
-  │             │  │                                  │
-  │             │  └──1:N──► WorkspaceMember           └──self 1:N──► SubTask
-  │             └──1:N──► Tag                                 (parent FK)
-  └──1:N──► Task (created_by)
+  │             │  │  │                             │
+  │             │  │  └──1:N──► Document ──N:M──► Tag
+  │             │  └──1:N──► WorkspaceMember         └──self 1:N──► SubTask
+  │             └──1:N──► Tag                                (parent FK)
+  └──1:N──► Task / Document (created_by)
 ```
 
 约束要点：

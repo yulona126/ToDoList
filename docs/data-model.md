@@ -12,13 +12,13 @@
 │          ├────────┤  (项目/版本)   ├────────┤  (清单)    ├────────┤ (任务) │
 └────┬─────┘  owner └───────┬───────┘        └───────────┘        └───┬────┘
      │                      │1                                       │
-     │                      │                                        │ self
+     │                      ├────1:N──► Document (计划/笔记)            │ self
      │              ┌───────┴────────┐      ┌────────┐               │1:N
-     │              │ WorkspaceMember│      │  Tag   │* ─ ─ ─ ─ ─ ─ ─┤
-     │1            *│  (V1 预留)      │      └────────┘   M:N (tags)  │
-     └──────────────┤  role/invited  │                               │
-        workspace_  └────────────────┘                        ┌──────┴──────┐
-        memberships                                          │   Task      │
+     │              │ WorkspaceMember│      │  Tag   │* ─ ─ M:N ─ ─ ─┤
+     │1            *│  (V1 预留)      │      └────┬───┘               │
+     └──────────────┤  role/invited  │           │ M:N documents     │
+        workspace_  └────────────────┘           │            ┌──────┴──────┐
+        memberships                               └────────────┤   Task      │
                                                              │  (subtask)  │
                                                              └─────────────┘
 ```
@@ -193,7 +193,31 @@
 
 ---
 
-## 8. 数据隔离的实现
+## 8. `todos.Document`
+
+工作区原生 Markdown 文档。计划 / 笔记存 `body`；仓库里的 ADR 等仍以 git 为准，
+可选 `path` 只作指针（为后续 Project Brain 预留）。
+
+| 字段 | 类型 | 约束 | 说明 |
+| --- | --- | --- | --- |
+| `workspace` | FK → Workspace | CASCADE | |
+| `created_by` | FK → User | SET_NULL, null | 审计 |
+| `title` | CharField(200) | 非空（去空格后） | |
+| `body` | TextField | blank | Markdown 正文 |
+| `kind` | CharField(16) | default `plan` | `plan` / `note` / `decision` / `spec` |
+| `status` | CharField(16) | default `active` | `draft` / `active` / `archived` |
+| `path` | CharField(512) | blank | 可选仓库相对路径 |
+| `sort_order` | Int | default 0 | |
+| `tags` | M2M → Tag | blank | |
+| `created_at` / `updated_at` | DateTime | auto | |
+
+**索引**：`(workspace, status)`、`(workspace, kind)`
+**排序**：`sort_order ASC, updated_at DESC`
+**列表默认**：隐藏 `status=archived`（`include_archived=true` 可放开）
+
+---
+
+## 9. 数据隔离的实现
 
 所有业务查询都收敛到一个入口：
 
@@ -207,6 +231,7 @@ class WorkspaceQuerySet(models.QuerySet):
 - `TaskListViewSet.get_queryset()` → `filter(workspace__in=Workspace.objects.for_user(user))`
 - `TagViewSet.get_queryset()` → 同上
 - `TaskViewSet.get_queryset()` → `Task.objects.for_user(user)`
+- `DocumentViewSet.get_queryset()` → `Document.objects.for_user(user)`
 
 详情路由通过 `ScopedDetailMixin` 直接从上述查询集取对象，
 **绕过列表过滤器**（列表过滤器要求 `workspace` 参数），但**不绕过用户作用域**。
@@ -214,7 +239,7 @@ class WorkspaceQuerySet(models.QuerySet):
 
 ---
 
-## 9. 迁移与演进
+## 10. 迁移与演进
 
 | 变更 | 是否需要迁移 | 说明 |
 | --- | --- | --- |

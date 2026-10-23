@@ -8,6 +8,8 @@
  */
 import type {
   BulkAction,
+  DocumentKind,
+  DocumentStatus,
   DueFilter,
   MemberRole,
   TaskPriority,
@@ -182,6 +184,75 @@ export interface ReorderPayload {
 
 export interface ReorderResult {
   updated: number;
+}
+
+/* ---------------------------------------------------- §2.1 architecture */
+
+export type ArchitecturePreferred = 'mermaid' | 'image';
+
+export interface ArchitectureDiagram {
+  workspace: ID;
+  title: string;
+  mermaid: string;
+  image_url: string | null;
+  preferred: ArchitecturePreferred;
+  has_content: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface ArchitectureUpdatePayload {
+  title?: string;
+  mermaid?: string;
+  preferred?: ArchitecturePreferred;
+}
+
+/* ------------------------------------------------------------ §5 documents */
+
+export interface Document {
+  id: ID;
+  workspace: ID;
+  workspace_name: string;
+  title: string;
+  /** Markdown body stored in the database. */
+  body: string;
+  kind: DocumentKind;
+  status: DocumentStatus;
+  /** Optional relative path when the same doc also lives in a git repo. */
+  path: string;
+  sort_order: number;
+  tags: Tag[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DocumentCreatePayload {
+  workspace: ID;
+  title: string;
+  body?: string;
+  kind?: DocumentKind;
+  status?: DocumentStatus;
+  path?: string;
+  sort_order?: number;
+  tag_ids?: ID[];
+}
+
+export type DocumentUpdatePayload = Partial<
+  Omit<DocumentCreatePayload, 'workspace'>
+> & {
+  workspace?: ID;
+};
+
+export interface DocumentQueryParams {
+  workspace: ID;
+  kind?: DocumentKind[];
+  status?: DocumentStatus[];
+  tag?: ID[];
+  search?: string;
+  include_archived?: boolean;
+  ordering?: string;
+  page?: number;
+  page_size?: number;
 }
 
 /* ---------------------------------------------------------------- §4 tasks */

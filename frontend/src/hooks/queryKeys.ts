@@ -1,4 +1,5 @@
 import type {
+  DocumentQueryParams,
   ListQueryParams,
   TaskQueryParams,
   WorkspaceQueryParams,
@@ -39,6 +40,17 @@ export const queryKeys = {
   tags: {
     all: ['tags'] as const,
     list: (workspaceId: number) => ['tags', 'list', workspaceId] as const,
+  },
+  documents: {
+    all: ['documents'] as const,
+    list: (params: DocumentQueryParams) =>
+      ['documents', 'list', params] as const,
+    listPrefix: ['documents', 'list'] as const,
+    detail: (id: number) => ['documents', 'detail', id] as const,
+  },
+  architecture: {
+    detail: (workspaceId: number) =>
+      ['architecture', 'detail', workspaceId] as const,
   },
   tokens: {
     /** Prefix that matches every cached token query (list invalidation). */

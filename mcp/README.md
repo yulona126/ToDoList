@@ -23,8 +23,9 @@ mcp/
 | --- | --- |
 | `list_workspaces()` | Markdown table of workspaces: `id`, name, task counts, description. |
 | `get_tasks(workspace_id, status="", due="", include_done=False, search="")` | The main read tool. Compact Markdown grouped by list, one line per task, sub-tasks indented under their parent. |
-| `create_tasks(workspace_id, tasks)` | Bulk create via `POST /tasks/bulk-create/` (≤ 100 per call). |
-| `update_tasks(task_ids, action)` | `action` ∈ `done \| todo \| archive`, via `POST /tasks/bulk/` (≤ 500 ids). |
+| `create_tasks(workspace_id, tasks)` | Bulk create via `POST /tasks/bulk-create/` (≤ 100 per call). Supports `description`. |
+| `update_tasks(task_ids, action)` | Batch status only: `action` ∈ `done \| todo \| archive`, via `POST /tasks/bulk/` (≤ 500 ids). |
+| `update_task(task_id, fields)` | Patch one task via `PATCH /tasks/{id}/`: `title`, `description`, `status`, `priority`, `task_type`, `due_date`, `task_list`, `is_archived`. |
 
 Output shape:
 

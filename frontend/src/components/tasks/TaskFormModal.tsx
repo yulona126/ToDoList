@@ -18,12 +18,15 @@ import { fieldError, toApiError, type ApiError } from '../../lib/api';
 import { cn } from '../../lib/utils';
 import { useUI } from '../../stores/UIContext';
 import type { Tag, Task, TaskCreatePayload } from '../../types';
+import { MarkdownPreview } from '../documents/MarkdownPreview';
 import { Button } from '../ui/Button';
 import { Icon } from '../ui/Icon';
 import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
 import { Select, type SelectOption } from '../ui/Select';
 import { Textarea } from '../ui/Textarea';
+
+type DescriptionMode = 'edit' | 'preview';
 
 export interface TaskFormModalProps {
   open: boolean;
@@ -57,6 +60,8 @@ export function TaskFormModal({
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [descriptionMode, setDescriptionMode] =
+    useState<DescriptionMode>('edit');
   const [taskListId, setTaskListId] = useState<number | null>(null);
   const [status, setStatus] = useState<TaskStatus>(TaskStatus.Todo);
   const [priority, setPriority] = useState<TaskPriority>(TaskPriority.Medium);
@@ -70,8 +75,13 @@ export function TaskFormModal({
 
   useEffect(() => {
     if (!open) return;
+    const nextDescription = task?.description ?? '';
     setTitle(task?.title ?? '');
-    setDescription(task?.description ?? '');
+    setDescription(nextDescription);
+    // Open existing tasks with content in preview so Markdown renders immediately.
+    setDescriptionMode(
+      task && nextDescription.trim() ? 'preview' : 'edit',
+    );
     setTaskListId(task ? task.task_list : defaultListId);
     setStatus(task?.status ?? TaskStatus.Todo);
     setPriority(task?.priority ?? TaskPriority.Medium);
@@ -195,12 +205,55 @@ export function TaskFormModal({
           data-autofocus
         />
 
-        <Textarea
-          label={t('task.description')}
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          placeholder={t('task.descriptionPlaceholder')}
-        />
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-secondary font-medium text-fg-muted">
+              {t('task.description')}
+            </span>
+            <div
+              role="tablist"
+              aria-label={t('task.description')}
+              className="inline-flex rounded-control border border-border p-0.5"
+            >
+              {(['edit', 'preview'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={descriptionMode === mode}
+                  className={cn(
+                    'rounded-[6px] px-2 py-0.5 text-meta motion-safe-150',
+                    descriptionMode === mode
+                      ? 'bg-surface-muted font-medium text-fg'
+                      : 'text-fg-muted hover:text-fg',
+                  )}
+                  onClick={() => setDescriptionMode(mode)}
+                >
+                  {mode === 'edit' ? t('common.edit') : t('common.preview')}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {descriptionMode === 'edit' ? (
+            <Textarea
+              aria-label={t('task.description')}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder={t('task.descriptionPlaceholder')}
+              rows={6}
+              className="font-mono text-secondary"
+              hint={t('task.descriptionHint')}
+            />
+          ) : (
+            <div className="min-h-[120px] rounded-control border border-border bg-surface-muted px-3 py-2.5">
+              <MarkdownPreview
+                source={description}
+                emptyLabel={t('task.descriptionPreviewEmpty')}
+              />
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Select

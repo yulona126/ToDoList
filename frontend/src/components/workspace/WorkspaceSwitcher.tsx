@@ -44,13 +44,13 @@ export function WorkspaceSwitcher() {
         align="start"
         triggerLabel={t('workspace.switchLabel')}
         items={items}
-        triggerClassName="max-w-[180px] gap-1 px-1.5 py-1 hover:bg-surface-muted"
+        triggerClassName="max-w-[200px] gap-1.5 px-2 py-1.5 hover:bg-surface-muted"
         trigger={
           <>
-            <span className="truncate text-body font-medium text-fg">
+            <span className="truncate text-body font-medium leading-none text-fg">
               {current?.name ?? t('workspace.title')}
             </span>
-            <Icon name="chevron-down" size={12} />
+            <Icon name="chevron-down" size={16} className="shrink-0 text-fg-muted" />
           </>
         }
       />

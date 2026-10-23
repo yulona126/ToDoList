@@ -4,6 +4,7 @@ import {
   PAGE_SIZE,
 } from './constants';
 import type {
+  DocumentQueryParams,
   ListQueryParams,
   TaskQueryParams,
   WorkspaceQueryParams,
@@ -115,4 +116,36 @@ export function normalizeListParams(params: ListQueryParams): ListQueryParams {
     ordering: params.ordering ?? 'sort_order,created_at',
     include_archived: params.include_archived ?? false,
   };
+}
+
+export function buildDocumentParams(params: DocumentQueryParams): QueryParams {
+  const query: QueryParams = { workspace: String(params.workspace) };
+  if (params.kind?.length) query.kind = params.kind.join(',');
+  if (params.status?.length) query.status = params.status.join(',');
+  if (params.tag?.length) query.tag = params.tag.join(',');
+  if (params.search?.trim()) query.search = params.search.trim();
+  if (params.include_archived !== undefined) {
+    query.include_archived = String(params.include_archived);
+  }
+  query.ordering = params.ordering ?? 'sort_order,-updated_at';
+  query.page_size = String(params.page_size ?? PAGE_SIZE);
+  if (params.page) query.page = String(params.page);
+  return query;
+}
+
+export function normalizeDocumentParams(
+  params: DocumentQueryParams,
+): DocumentQueryParams {
+  const next: DocumentQueryParams = {
+    workspace: params.workspace,
+    ordering: params.ordering ?? 'sort_order,-updated_at',
+    page_size: params.page_size ?? PAGE_SIZE,
+    include_archived: params.include_archived ?? false,
+  };
+  if (params.kind?.length) next.kind = sortedCopy(params.kind);
+  if (params.status?.length) next.status = sortedCopy(params.status);
+  if (params.tag?.length) next.tag = sortedCopy(params.tag);
+  if (params.search?.trim()) next.search = params.search.trim();
+  if (params.page) next.page = params.page;
+  return next;
 }

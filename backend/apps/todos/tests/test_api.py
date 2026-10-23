@@ -6,11 +6,20 @@ from datetime import timedelta
 from typing import Any
 
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from apps.todos.models import Tag, Task, TaskList, Workspace, WorkspaceMember
+from apps.todos.models import (
+    ArchitectureDiagram,
+    Document,
+    Tag,
+    Task,
+    TaskList,
+    Workspace,
+    WorkspaceMember,
+)
 
 User = get_user_model()
 
@@ -18,6 +27,7 @@ WORKSPACES = "/api/v1/workspaces/"
 LISTS = "/api/v1/lists/"
 TASKS = "/api/v1/tasks/"
 TAGS = "/api/v1/tags/"
+DOCUMENTS = "/api/v1/documents/"
 
 
 class BaseAPITestCase(APITestCase):
@@ -62,7 +72,13 @@ class BaseAPITestCase(APITestCase):
 class AuthenticationRequiredTests(BaseAPITestCase):
     def test_endpoints_require_auth(self) -> None:
         self.client.credentials()
-        for url in (WORKSPACES, f"{TASKS}?workspace=1", LISTS + "?workspace=1", TAGS + "?workspace=1"):
+        for url in (
+            WORKSPACES,
+            f"{TASKS}?workspace=1",
+            LISTS + "?workspace=1",
+            TAGS + "?workspace=1",
+            DOCUMENTS + "?workspace=1",
+        ):
             with self.subTest(url=url):
                 self.assertEqual(
                     self.client.get(url).status_code, status.HTTP_401_UNAUTHORIZED
@@ -658,5 +674,230 @@ class TagTests(BaseAPITestCase):
         foreign_tag = Tag.objects.create(workspace=theirs, name="secret")
         self.assertEqual(
             self.client.delete(f"{TAGS}{foreign_tag.id}/").status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+
+
+class DocumentTests(BaseAPITestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.workspace = self.make_workspace()
+
+    def test_create_list_update_delete(self) -> None:
+        create = self.client.post(
+            DOCUMENTS,
+            {
+                "workspace": self.workspace.id,
+                "title": "v1 里程碑计划",
+                "body": "- [ ] #1 登录页\n- [ ] #2 PWA",
+                "kind": "plan",
+                "status": "draft",
+            },
+            format="json",
+        )
+        self.assertEqual(create.status_code, status.HTTP_201_CREATED, create.data)
+        self.assertEqual(create.data["workspace_name"], self.workspace.name)
+        self.assertEqual(create.data["kind"], "plan")
+        self.assertEqual(create.data["status"], "draft")
+        doc_id = create.data["id"]
+
+        listing = self.client.get(f"{DOCUMENTS}?workspace={self.workspace.id}")
+        self.assertEqual(listing.status_code, status.HTTP_200_OK)
+        self.assertEqual(listing.data["count"], 1)
+        self.assertEqual(listing.data["results"][0]["id"], doc_id)
+
+        patch = self.client.patch(
+            f"{DOCUMENTS}{doc_id}/",
+            {"status": "active", "body": "- [x] #1 登录页"},
+            format="json",
+        )
+        self.assertEqual(patch.status_code, status.HTTP_200_OK, patch.data)
+        self.assertEqual(patch.data["status"], "active")
+        self.assertIn("#1", patch.data["body"])
+
+        detail = self.client.get(f"{DOCUMENTS}{doc_id}/")
+        self.assertEqual(detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(detail.data["title"], "v1 里程碑计划")
+
+        delete = self.client.delete(f"{DOCUMENTS}{doc_id}/")
+        self.assertEqual(delete.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(
+            self.client.get(f"{DOCUMENTS}?workspace={self.workspace.id}").data["count"],
+            0,
+        )
+
+    def test_archived_hidden_by_default(self) -> None:
+        Document.objects.create(
+            workspace=self.workspace,
+            title="旧计划",
+            kind=Document.Kind.PLAN,
+            status=Document.Status.ARCHIVED,
+        )
+        Document.objects.create(
+            workspace=self.workspace,
+            title="进行中",
+            kind=Document.Kind.NOTE,
+            status=Document.Status.ACTIVE,
+        )
+        listing = self.client.get(f"{DOCUMENTS}?workspace={self.workspace.id}")
+        self.assertEqual(listing.data["count"], 1)
+        self.assertEqual(listing.data["results"][0]["title"], "进行中")
+
+        with_archived = self.client.get(
+            f"{DOCUMENTS}?workspace={self.workspace.id}&include_archived=true"
+        )
+        self.assertEqual(with_archived.data["count"], 2)
+
+    def test_filter_by_kind_and_search(self) -> None:
+        Document.objects.create(
+            workspace=self.workspace,
+            title="发布计划",
+            body="含 PWA 缓存",
+            kind=Document.Kind.PLAN,
+        )
+        Document.objects.create(
+            workspace=self.workspace,
+            title="登录决策",
+            body="JWT 轮换",
+            kind=Document.Kind.DECISION,
+        )
+        by_kind = self.client.get(
+            f"{DOCUMENTS}?workspace={self.workspace.id}&kind=decision"
+        )
+        self.assertEqual(by_kind.data["count"], 1)
+        self.assertEqual(by_kind.data["results"][0]["kind"], "decision")
+
+        by_search = self.client.get(
+            f"{DOCUMENTS}?workspace={self.workspace.id}&search=PWA"
+        )
+        self.assertEqual(by_search.data["count"], 1)
+        self.assertEqual(by_search.data["results"][0]["title"], "发布计划")
+
+    def test_title_required_and_isolation(self) -> None:
+        empty = self.client.post(
+            DOCUMENTS,
+            {"workspace": self.workspace.id, "title": "  "},
+            format="json",
+        )
+        self.assertEqual(empty.status_code, status.HTTP_400_BAD_REQUEST)
+
+        theirs = self.make_workspace(owner=self.other, name="Theirs")
+        foreign = Document.objects.create(
+            workspace=theirs, title="secret plan", kind=Document.Kind.PLAN
+        )
+        self.assertEqual(
+            self.client.get(f"{DOCUMENTS}{foreign.id}/").status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+        self.assertEqual(
+            self.client.get(f"{DOCUMENTS}?workspace={theirs.id}").status_code,
+            status.HTTP_200_OK,
+        )
+        self.assertEqual(
+            self.client.get(f"{DOCUMENTS}?workspace={theirs.id}").data["count"],
+            0,
+        )
+
+    def test_tag_ids_must_belong_to_workspace(self) -> None:
+        tag = Tag.objects.create(workspace=self.workspace, name="milestone")
+        other_ws = self.make_workspace(name="Other")
+        foreign_tag = Tag.objects.create(workspace=other_ws, name="foreign")
+
+        ok = self.client.post(
+            DOCUMENTS,
+            {
+                "workspace": self.workspace.id,
+                "title": "带标签计划",
+                "tag_ids": [tag.id],
+            },
+            format="json",
+        )
+        self.assertEqual(ok.status_code, status.HTTP_201_CREATED, ok.data)
+        self.assertEqual(ok.data["tags"][0]["name"], "milestone")
+
+        bad = self.client.post(
+            DOCUMENTS,
+            {
+                "workspace": self.workspace.id,
+                "title": "错标签",
+                "tag_ids": [foreign_tag.id],
+            },
+            format="json",
+        )
+        self.assertEqual(bad.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class ArchitectureDiagramTests(BaseAPITestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.workspace = self.make_workspace()
+        self.url = f"{WORKSPACES}{self.workspace.id}/architecture/"
+        self.image_url = f"{WORKSPACES}{self.workspace.id}/architecture/image/"
+
+    def test_get_empty_shell_then_put_mermaid(self) -> None:
+        empty = self.client.get(self.url)
+        self.assertEqual(empty.status_code, status.HTTP_200_OK, empty.data)
+        self.assertFalse(empty.data["has_content"])
+        self.assertEqual(empty.data["mermaid"], "")
+
+        put = self.client.put(
+            self.url,
+            {
+                "title": "系统架构",
+                "mermaid": "flowchart LR\n  A --> B",
+                "preferred": "mermaid",
+            },
+            format="json",
+        )
+        self.assertEqual(put.status_code, status.HTTP_200_OK, put.data)
+        self.assertTrue(put.data["has_content"])
+        self.assertIn("A --> B", put.data["mermaid"])
+        self.assertEqual(ArchitectureDiagram.objects.filter(workspace=self.workspace).count(), 1)
+
+        again = self.client.put(
+            self.url,
+            {"mermaid": "flowchart TB\n  X --> Y"},
+            format="json",
+        )
+        self.assertEqual(again.status_code, status.HTTP_200_OK, again.data)
+        self.assertEqual(
+            ArchitectureDiagram.objects.filter(workspace=self.workspace).count(), 1
+        )
+        self.assertIn("X --> Y", again.data["mermaid"])
+
+    def test_upload_and_delete_image(self) -> None:
+        upload = SimpleUploadedFile(
+            "diagram.png",
+            b"\x89PNG\r\n\x1a\n" + b"\x00" * 32,
+            content_type="image/png",
+        )
+        response = self.client.post(self.image_url, {"image": upload}, format="multipart")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertTrue(response.data["has_content"])
+        self.assertEqual(response.data["preferred"], "image")
+        self.assertIsNotNone(response.data["image_url"])
+
+        cleared = self.client.delete(self.image_url)
+        self.assertEqual(cleared.status_code, status.HTTP_200_OK, cleared.data)
+        self.assertIsNone(cleared.data["image_url"])
+
+    def test_delete_architecture_and_isolation(self) -> None:
+        ArchitectureDiagram.objects.create(
+            workspace=self.workspace,
+            title="arch",
+            mermaid="flowchart LR\n  A --> B",
+        )
+        deleted = self.client.delete(self.url)
+        self.assertEqual(deleted.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(
+            ArchitectureDiagram.objects.filter(workspace=self.workspace).exists()
+        )
+
+        theirs = self.make_workspace(owner=self.other, name="Theirs")
+        ArchitectureDiagram.objects.create(
+            workspace=theirs, mermaid="flowchart LR\n  secret"
+        )
+        self.assertEqual(
+            self.client.get(f"{WORKSPACES}{theirs.id}/architecture/").status_code,
             status.HTTP_404_NOT_FOUND,
         )
