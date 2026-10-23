@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
     DocumentViewSet,
+    FlowView,
     TagViewSet,
     TaskListViewSet,
     TaskViewSet,
@@ -21,4 +23,6 @@ router.register("tags", TagViewSet, basename="tag")
 router.register("tasks", TaskViewSet, basename="task")
 router.register("documents", DocumentViewSet, basename="document")
 
-urlpatterns = router.urls
+urlpatterns = [
+    path("flow/", FlowView.as_view(), name="flow"),
+] + router.urls

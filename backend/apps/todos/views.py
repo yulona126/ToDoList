@@ -16,11 +16,14 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.request import Request
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 
 from apps.common.mixins import ScopedDetailMixin
 from apps.common.permissions import IsObjectOwnerOrMember
 
+from . import events as ev
+from .flow import flow_summary, story_timeline
 from .filters import (
     DocumentFilter,
     TagFilter,
@@ -37,6 +40,7 @@ from .models import (
     TaskList,
     Workspace,
     WorkspaceMember,
+    TaskEvent,
 )
 from .serializers import (
     ArchitectureDiagramSerializer,
@@ -45,6 +49,7 @@ from .serializers import (
     ListReorderSerializer,
     ReorderSerializer,
     TagSerializer,
+    TaskEventSerializer,
     TaskListSerializer,
     TaskSerializer,
     WorkspaceMemberSerializer,
@@ -347,6 +352,10 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
     )
     ordering = ("sort_order", "created_at")
 
+    def perform_create(self, serializer: Any) -> None:
+        task = serializer.save()
+        ev.record_event(task, TaskEvent.Kind.CREATED, source=TaskEvent.Source.UI)
+
     def get_queryset(self) -> Any:
         return (
             Task.objects.for_user(self.request.user)
@@ -372,8 +381,54 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
     @action(detail=True, methods=["post"], url_path="toggle")
     def toggle(self, request: Request, pk: str | None = None) -> Response:
         task = self.get_object()
-        task.toggle_status()
+        if task.status == Task.Status.DONE:
+            ev.reopen_task(task, source=TaskEvent.Source.UI)
+        else:
+            ev.complete_task(
+                task,
+                source=TaskEvent.Source.UI,
+                note=str(request.data.get("note") or ""),
+            )
         return Response(self.get_serializer(task).data)
+
+    # -- flow actions (docs/story-flow.md) ---------------------------------
+    @extend_schema(
+        request=None,
+        responses={200: TaskSerializer},
+        description="Pull a task into Now. Writes a `committed` event.",
+    )
+    @action(detail=True, methods=["post"], url_path="commit")
+    def commit(self, request: Request, pk: str | None = None) -> Response:
+        task = self.get_object()
+        ev.commit_task(task, source=TaskEvent.Source.UI)
+        return Response(self.get_serializer(task).data)
+
+    @extend_schema(
+        request=None,
+        responses={200: TaskSerializer},
+        description="Send a task back to the backlog. Writes an `uncommitted` event.",
+    )
+    @action(detail=True, methods=["post"], url_path="uncommit")
+    def uncommit(self, request: Request, pk: str | None = None) -> Response:
+        task = self.get_object()
+        ev.uncommit_task(task, source=TaskEvent.Source.UI)
+        return Response(self.get_serializer(task).data)
+
+    @extend_schema(
+        responses={200: TaskEventSerializer(many=True)},
+        description="The story timeline: everything that happened to this task.",
+    )
+    @action(detail=True, methods=["get"], url_path="events")
+    def events(self, request: Request, pk: str | None = None) -> Response:
+        task = self.get_object()
+        queryset = task.events.all()
+        return Response(
+            {
+                "count": queryset.count(),
+                "results": TaskEventSerializer(queryset, many=True).data,
+                "summary": story_timeline(task),
+            }
+        )
 
     @extend_schema(
         request=ReorderSerializer,
@@ -565,9 +620,10 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
 
         with transaction.atomic():
             if action_name == BulkActionSerializer.Action.DONE:
-                updated = queryset.update(
-                    status=Task.Status.DONE, completed_at=now, updated_at=now
-                )
+                # Not queryset.update(): each task needs its own `completed`
+                # event, otherwise the story timeline is empty and the lead-time
+                # metrics measure nothing.
+                updated = ev.bulk_complete(queryset, source=TaskEvent.Source.UI)
             elif action_name == BulkActionSerializer.Action.TODO:
                 updated = queryset.update(
                     status=Task.Status.TODO, completed_at=None, updated_at=now
@@ -593,3 +649,31 @@ class DocumentViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Document]):
 
     def get_queryset(self) -> Any:
         return Document.objects.for_user(self.request.user).with_related()
+
+
+class FlowView(APIView):
+    """`GET /api/v1/flow/?workspace=<id>`
+
+    The one screen that replaces backlog grooming. Every number is derived, so
+    reading it costs the user nothing.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: dict}, description="Derived throughput / WIP / aging numbers.")
+    def get(self, request: Request) -> Response:
+        raw = request.query_params.get("workspace")
+        if not raw or not str(raw).isdigit():
+            return Response(
+                {"detail": "缺少 workspace 参数。", "errors": {"workspace": ["必填。"]}},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        workspace = (
+            Workspace.objects.for_user(request.user).filter(pk=int(raw)).first()
+        )
+        if workspace is None:
+            return Response(
+                {"detail": "工作区不存在。", "errors": {}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response({"workspace": workspace.id, **flow_summary(workspace)})

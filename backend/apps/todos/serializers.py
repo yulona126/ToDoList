@@ -17,6 +17,7 @@ from .models import (
     TaskList,
     Workspace,
     WorkspaceMember,
+    TaskEvent,
 )
 
 User = get_user_model()
@@ -197,6 +198,10 @@ class TaskSerializer(serializers.ModelSerializer[Task]):
     )
     is_overdue = serializers.BooleanField(read_only=True)
     subtask_stats = serializers.SerializerMethodField()
+    # --- flow fields (docs/story-flow.md) ---
+    is_committed = serializers.SerializerMethodField()
+    age_days = serializers.SerializerMethodField()
+    now_days = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -220,6 +225,10 @@ class TaskSerializer(serializers.ModelSerializer[Task]):
             "tags",
             "tag_ids",
             "subtask_stats",
+            "committed_at",
+            "is_committed",
+            "age_days",
+            "now_days",
             "created_at",
             "updated_at",
         )
@@ -228,6 +237,12 @@ class TaskSerializer(serializers.ModelSerializer[Task]):
             "workspace_name",
             "task_list_name",
             "completed_at",
+            # committed_at is only writable through /tasks/{id}/commit|uncommit/,
+            # so that the story timeline always gets its event.
+            "committed_at",
+            "is_committed",
+            "age_days",
+            "now_days",
             "is_overdue",
             "subtask_stats",
             "created_at",
@@ -235,6 +250,19 @@ class TaskSerializer(serializers.ModelSerializer[Task]):
         )
 
     # -- read helpers -------------------------------------------------------
+    def get_is_committed(self, obj: Task) -> bool:
+        return obj.committed_at is not None
+
+    def get_age_days(self, obj: Task) -> int:
+        """Days since capture. The backlog-aging signal, free of any input."""
+        return max(0, (timezone.now() - obj.created_at).days)
+
+    def get_now_days(self, obj: Task) -> int | None:
+        """Days since it was pulled into Now, or None when it is still backlog."""
+        if obj.committed_at is None:
+            return None
+        return max(0, (timezone.now() - obj.committed_at).days)
+
     def get_subtask_stats(self, obj: Task) -> dict[str, int]:
         if hasattr(obj, "subtask_total"):
             return {"total": obj.subtask_total, "done": obj.subtask_done}
@@ -503,3 +531,23 @@ class DocumentSerializer(serializers.ModelSerializer[Document]):
             .first()
         )
         return (last or 0) + 1
+
+
+class TaskEventSerializer(serializers.ModelSerializer[TaskEvent]):
+    """One entry in a story's timeline. Read-only by design."""
+
+    kind_label = serializers.CharField(source="get_kind_display", read_only=True)
+
+    class Meta:
+        model = TaskEvent
+        fields = (
+            "id",
+            "kind",
+            "kind_label",
+            "source",
+            "note",
+            "from_value",
+            "to_value",
+            "created_at",
+        )
+        read_only_fields = fields

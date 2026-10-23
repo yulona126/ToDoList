@@ -253,6 +253,11 @@ class Task(TimeStampedModel):
     due_date = models.DateField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
+    #: 唯一需要用户做的"整理"动作：把它拉进"现在"。
+    #: NULL = backlog（默认，零成本）；有值 = 已承诺。
+    #: 半开区间查询见 apps/todos/flow.py（不要用 __week，会跨年误匹配）。
+    committed_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
     sort_order = models.IntegerField(default=0)
     is_archived = models.BooleanField(default=False)
 
@@ -407,3 +412,47 @@ class Document(TimeStampedModel):
 
     def __str__(self) -> str:
         return self.title
+
+
+class TaskEvent(TimeStampedModel):
+    """一个任务发生过什么 —— 只追加，不修改。
+
+    这是"完全掌握一个 story"的全部来源。它由系统在每次状态变化时自动写入，
+    **不需要用户维护**：用户只做一个动作（拉进"现在"），其余事件由 API 层
+    与 MCP 写回时顺手记录。
+
+    设计约束：
+    * 只追加。删除任务时级联删除事件（否则会出现孤儿）。
+    * `note` 只存一句话的事实（"curl 了 401/400/404"），不存富文本。
+      它会在 `get_context` 里被带给 AI，所以要短。
+    """
+
+    class Kind(models.TextChoices):
+        CREATED = "created", "Created"
+        COMMITTED = "committed", "Pulled into Now"
+        UNCOMMITTED = "uncommitted", "Sent back to backlog"
+        COMPLETED = "completed", "Completed"
+        REOPENED = "reopened", "Reopened"
+        BLOCKED = "blocked", "Blocked"
+        UNBLOCKED = "unblocked", "Unblocked"
+        MOVED = "moved", "Moved list"
+        NOTED = "noted", "Note"
+
+    class Source(models.TextChoices):
+        UI = "ui", "Web UI"
+        MCP = "mcp", "MCP / agent"
+        SYSTEM = "system", "System"
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="events")
+    kind = models.CharField(max_length=16, choices=Kind.choices)
+    source = models.CharField(max_length=8, choices=Source.choices, default=Source.UI)
+    note = models.TextField(blank=True, default="")
+    from_value = models.CharField(max_length=120, blank=True, default="")
+    to_value = models.CharField(max_length=120, blank=True, default="")
+
+    class Meta:
+        ordering = ("created_at", "id")
+        indexes = [models.Index(fields=["task", "-created_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.task_id} {self.kind}"
