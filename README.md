@@ -218,7 +218,8 @@ cd frontend && npm run dev    # http://localhost:5173
 | 公网 / Tunnel | [Tunnel](docs/cloudflare-tunnel.md) |
 | 备份、排错、限流建议 | [部署手册](docs/deployment.md) |
 | 本机开发坑 | [开发指南](docs/development.md) |
-| 怎么用敏捷方式管这个项目？ | [敏捷方案](docs/agile.md) |
+| 敏捷流程：需求→验证→开发→自测 | [阶段流水线](docs/stage-pipeline.md) |
+| 周迭代与承诺闸门 | [周迭代方案](docs/agile.md) |
 | 后面做什么 | [路线图](docs/roadmap.md) |
 | **怎么让 AI 真正理解这个项目？** | **[项目理解数据库方案](docs/project-brain.md)** |
 
