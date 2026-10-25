@@ -10,6 +10,7 @@ import { Button } from '../ui/Button';
 import { DropdownMenu, type DropdownMenuItem } from '../ui/DropdownMenu';
 import { Icon } from '../ui/Icon';
 import { IconButton } from '../ui/IconButton';
+import { ThemeToggle } from '../ui/ThemeToggle';
 import { Input } from '../ui/Input';
 import { WorkspaceSwitcher } from '../workspace/WorkspaceSwitcher';
 
@@ -23,7 +24,7 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
   const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const { theme, toggleTheme, language, toggleLanguage, push } = useUI();
+  const { language, toggleLanguage, push } = useUI();
   const { user, logout } = useAuth();
 
   const workspaceId = workspaceIdFromPath(location.pathname);
@@ -158,9 +159,7 @@ export function Topbar({ onOpenSidebar }: TopbarProps) {
       )}
 
       <div className="ml-auto flex items-center gap-1">
-        <IconButton label={t('nav.toggleTheme')} onClick={toggleTheme}>
-          <Icon name={theme === 'dark' ? 'sun' : 'moon'} size={16} />
-        </IconButton>
+          <ThemeToggle />
 
         <Button
           variant="ghost"

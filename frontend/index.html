@@ -21,19 +21,18 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <script>
       /* Apply the persisted theme before first paint to avoid a flash of the wrong theme.
-         Mirrors UIContext: localStorage['todolist.theme'] = 'light' | 'dark'. */
+         Mirrors lib/theme.ts: localStorage['todolist.theme'] is
+         'light' | 'dark' | 'system'; 'system' (and no value) follows the OS. */
       (function () {
         try {
           var stored = window.localStorage.getItem('todolist.theme');
-          var theme =
-            stored === 'light' || stored === 'dark'
-              ? stored
-              : window.matchMedia('(prefers-color-scheme: dark)').matches
-                ? 'dark'
-                : 'light';
-          if (theme === 'dark') {
+          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var dark = stored === 'dark' || ((stored === 'system' || !stored) && prefersDark);
+          if (dark) {
             document.documentElement.classList.add('dark');
           }
+          /* Native controls, scrollbars and caret follow color-scheme. */
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
         } catch (error) {
           /* localStorage unavailable (private mode): keep the light default. */
         }

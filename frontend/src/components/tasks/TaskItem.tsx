@@ -72,6 +72,17 @@ export function TaskItem({
   const dwellLimit = task.is_committed ? 7 : agingDays;
   const dwellWarn = !isDone && dwellDays >= dwellLimit;
   const showDwell = !isDone && dwellDays >= 1;
+
+  /* Due dates are scanned, not read. Three tiers is the most a glance can carry:
+     overdue (needs action now), within 2 days (needs attention), everything
+     else (context only). The tiers are weight + colour-role, never hue. */
+  const urgency: 'overdue' | 'soon' | 'later' | null = (() => {
+    if (!task.due_date) return null;
+    if (task.is_overdue) return 'overdue';
+    const due = new Date(`${task.due_date}T23:59:59`).getTime();
+    const days = Math.ceil((due - Date.now()) / 86_400_000);
+    return days <= 2 ? 'soon' : 'later';
+  })();
   const visibleTags = task.tags.slice(0, 3);
   const extraTags = task.tags.length - visibleTags.length;
 
@@ -165,11 +176,15 @@ export function TaskItem({
             </span>
           ) : null}
 
-          <span className="hidden text-fg-muted sm:flex">
-            <Tooltip label={t(TASK_TYPE_LABEL_KEY[task.task_type])}>
-              <Icon name={TASK_TYPE_ICON[task.task_type]} size={14} />
-            </Tooltip>
-          </span>
+          {/* Type is the one fact that has no other cue in the row, so it gets a
+              bordered micro-chip rather than a bare glyph: at 10px uppercase
+              with tracking it stays readable while occupying ~40px. */}
+          <Tooltip label={t(TASK_TYPE_LABEL_KEY[task.task_type])}>
+            <span className="hidden items-center gap-1 rounded-control border border-border px-1.5 py-0.5 text-fg-muted sm:inline-flex">
+              <Icon name={TASK_TYPE_ICON[task.task_type]} size={10} />
+              <span className="eyebrow">{t(TASK_TYPE_LABEL_KEY[task.task_type])}</span>
+            </span>
+          </Tooltip>
 
           <PriorityMarker priority={task.priority} />
 
@@ -179,13 +194,14 @@ export function TaskItem({
             >
               <span
                 className={cn(
-                  'whitespace-nowrap text-meta tabular-nums',
-                  task.is_overdue
-                    ? 'font-semibold text-fg'
-                    : 'text-fg-muted',
+                  'num whitespace-nowrap font-mono text-meta',
+                  urgency === 'overdue' && 'font-semibold text-fg',
+                  urgency === 'soon' && 'font-medium text-fg',
+                  urgency === 'later' && 'text-fg-muted',
+                  done && 'text-fg-subtle',
                 )}
               >
-                {task.is_overdue ? '⌛ ' : ''}
+                {urgency === 'overdue' ? '⌛ ' : ''}
                 {formatShortDate(task.due_date)}
               </span>
             </Tooltip>
@@ -201,7 +217,7 @@ export function TaskItem({
             >
               <span
                 className={cn(
-                  'whitespace-nowrap text-meta tabular-nums',
+                  'num whitespace-nowrap font-mono text-meta',
                   dwellWarn ? 'font-semibold text-fg' : 'text-fg-subtle',
                 )}
               >
@@ -329,16 +345,21 @@ function PriorityMarker({ priority }: { priority: TaskPriority }) {
         className="inline-flex items-center gap-1 text-fg"
       >
         <span className="h-2 w-2 bg-fg" aria-hidden="true" />
-        <span className="text-[10px] font-semibold tracking-wider uppercase">
-          {t('constants.priority.urgent')}
-        </span>
+        <span className="eyebrow font-semibold">{t('constants.priority.urgent')}</span>
       </span>
     );
   }
 
   const filled = priority === 'high';
   return (
-    <span role="img" aria-label={label} title={label} className="text-fg-muted">
+    /* `high` reads at full contrast and `medium` stays muted, so the two are
+       distinguishable without a second shape or a hue. */
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className={filled ? 'text-fg' : 'text-fg-subtle'}
+    >
       <svg viewBox="0 0 10 10" width={9} height={9} aria-hidden="true">
         <path
           d={filled ? 'M5 0.5 10 9.5H0Z' : 'M5 1.4 9.1 8.8H0.9Z'}

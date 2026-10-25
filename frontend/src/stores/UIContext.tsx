@@ -11,7 +11,21 @@ import {
 import { useTranslation } from 'react-i18next';
 import { Icon } from '../components/ui/Icon';
 import i18n, { detectLanguage, syncDayjsLocale } from '../i18n';
-import { STORAGE_KEYS, type Language, type Theme } from '../lib/constants';
+import {
+  STORAGE_KEYS,
+  type Language,
+  type Theme,
+  type ThemeMode,
+} from '../lib/constants';
+import {
+  applyTheme,
+  nextMode,
+  readStoredMode,
+  resolveTheme,
+  switchTheme,
+  systemTheme,
+  type SwitchOptions,
+} from '../lib/theme';
 import { cn } from '../lib/utils';
 
 export type ToastType = 'success' | 'error';
@@ -26,8 +40,12 @@ export interface ToastItem extends ToastInput {
 }
 
 interface UIContextValue {
+  /** The palette that is actually painted right now. */
   theme: Theme;
+  /** What the user chose: 'system' follows the OS. */
+  themeMode: ThemeMode;
   setTheme: (theme: Theme) => void;
+  setThemeMode: (mode: ThemeMode, options?: SwitchOptions) => void;
   toggleTheme: () => void;
   language: Language;
   setLanguage: (language: Language) => void;
@@ -43,20 +61,12 @@ const TOAST_TTL_MS = 3_500;
 
 let toastSequence = 0;
 
-function readStoredTheme(): Theme | null {
+function storedMode(): ThemeMode {
   try {
-    const value = window.localStorage.getItem(STORAGE_KEYS.theme);
-    return value === 'light' || value === 'dark' ? value : null;
+    return readStoredMode(window.localStorage.getItem(STORAGE_KEYS.theme)) ?? 'system';
   } catch {
-    return null;
+    return 'system';
   }
-}
-
-function systemTheme(): Theme {
-  if (typeof window === 'undefined' || !window.matchMedia) return 'light';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-    ? 'dark'
-    : 'light';
 }
 
 function persist(key: string, value: string): void {
@@ -69,28 +79,57 @@ function persist(key: string, value: string): void {
 
 export function UIProvider({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
-  const [theme, setThemeState] = useState<Theme>(
-    () => readStoredTheme() ?? systemTheme(),
-  );
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(storedMode);
+  const [theme, setThemeState] = useState<Theme>(() => resolveTheme(storedMode()));
   const [language, setLanguageState] = useState<Language>(() =>
     detectLanguage(),
   );
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const timers = useRef(new Map<string, number>());
 
-  /* Keep the <html> class + persistence in sync with the theme state. */
+  /* Keep the <html> class + persistence in sync with the painted theme. */
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', theme === 'dark');
-    persist(STORAGE_KEYS.theme, theme);
+    applyTheme(theme);
   }, [theme]);
 
-  const setTheme = useCallback((next: Theme) => {
-    setThemeState(next);
-  }, []);
+  useEffect(() => {
+    persist(STORAGE_KEYS.theme, themeMode);
+  }, [themeMode]);
+
+  /* While in `system` mode, follow the OS live — without the wipe, which would
+     be startling when the change was not user-initiated. */
+  useEffect(() => {
+    if (themeMode !== 'system') return;
+    if (typeof window === 'undefined' || !window.matchMedia) return;
+    const query = window.matchMedia('(prefers-color-scheme: dark)');
+    const onChange = () => setThemeState(systemTheme());
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, [themeMode]);
+
+  const setThemeMode = useCallback(
+    (mode: ThemeMode, options?: SwitchOptions) => {
+      switchTheme(
+        mode,
+        theme,
+        () => {
+          setThemeModeState(mode);
+          setThemeState(resolveTheme(mode));
+        },
+        options,
+      );
+    },
+    [theme],
+  );
+
+  const setTheme = useCallback(
+    (next: Theme) => setThemeMode(next),
+    [setThemeMode],
+  );
 
   const toggleTheme = useCallback(() => {
-    setThemeState((current) => (current === 'dark' ? 'light' : 'dark'));
-  }, []);
+    setThemeMode(nextMode(themeMode));
+  }, [setThemeMode, themeMode]);
 
   const dismiss = useCallback((id: string) => {
     const timer = timers.current.get(id);
@@ -142,7 +181,9 @@ export function UIProvider({ children }: { children: ReactNode }) {
   const value = useMemo<UIContextValue>(
     () => ({
       theme,
+      themeMode,
       setTheme,
+      setThemeMode,
       toggleTheme,
       language,
       setLanguage,
@@ -153,7 +194,9 @@ export function UIProvider({ children }: { children: ReactNode }) {
     }),
     [
       theme,
+      themeMode,
       setTheme,
+      setThemeMode,
       toggleTheme,
       language,
       setLanguage,

@@ -73,6 +73,11 @@
   --spacing-content: 880px;
   --spacing-toast: 360px;
   --spacing-row: 44px;
+
+  /* Tabular figures are how numeric metadata stays aligned row to row; the
+     mono stack gives dates and counts the rhythm that makes them scannable. */
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
 
 @layer base {
@@ -274,4 +279,61 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+
+/* ---------------------------------------------------------------------------
+   Metadata emphasis
+   A row carries several small facts at once (type, priority, due date, dwell).
+   They are separated by weight, tracking and tabular figures rather than
+   colour — which is what keeps the monochrome rule intact and stays legible in
+   both themes. Every one of them is a real utility so components cannot invent
+   their own scale.
+   --------------------------------------------------------------------------- */
+
+/* Tiny uppercase label. Reads as a tag, not as body text. */
+@utility eyebrow {
+  font-size: 10px;
+  line-height: 1.4;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Numbers that must not shift as they change (dates, counts, dwell days). */
+@utility num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* The three-step contrast ladder for secondary facts. */
+@utility meta-strong {
+  color: var(--fg);
+  font-weight: 600;
+}
+
+@utility meta-mid {
+  color: var(--fg-muted);
+  font-weight: 500;
+}
+
+@utility meta-weak {
+  color: var(--fg-subtle);
+  font-weight: 400;
+}
+
+/* ---------------------------------------------------------------------------
+   Theme switch
+   The reveal is a masked overlay created in JS (see lib/theme.ts), not a View
+   Transition — View Transition snapshots sit above the page and swallow clicks
+   for the duration of the animation. The only thing needed here is that any
+   stray view-transition pseudo element never intercepts input.
+   --------------------------------------------------------------------------- */
+::view-transition,
+::view-transition-group(root),
+::view-transition-image-pair(root),
+::view-transition-old(root),
+::view-transition-new(root) {
+  pointer-events: none;
 }

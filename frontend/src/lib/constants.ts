@@ -240,6 +240,15 @@ export const DEFAULT_LANGUAGE: Language = 'zh-CN';
 
 export type Theme = 'light' | 'dark';
 
+/**
+ * Theme preference, which is one step wider than the painted `Theme`.
+ * `system` follows the OS and re-resolves live; the other two are explicit.
+ */
+export type ThemeMode = 'system' | 'light' | 'dark';
+
+/** Click order for the toggle: system → light → dark → system. */
+export const THEME_MODE_ORDER: readonly ThemeMode[] = ['system', 'light', 'dark'];
+
 export const STORAGE_KEYS = {
   refresh: 'todolist.refresh',
   theme: 'todolist.theme',

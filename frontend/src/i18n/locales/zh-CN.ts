@@ -485,6 +485,12 @@ const zhCN = {
     copyManual: '无法自动复制，已为你选中文本，请按 Ctrl/Cmd + C 手动复制。',
     revealDone: '我已保存',
   },
+  theme: {
+    label: '主题',
+    system: '跟随系统',
+    light: '浅色',
+    dark: '深色',
+  },
   pwa: {
     installTitle: '安装到桌面',
     installBody: '离线也能打开，像原生应用一样使用。',

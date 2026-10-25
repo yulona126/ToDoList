@@ -499,6 +499,12 @@ const enUS: TranslationSchema = {
       'Could not copy automatically. The text is selected — press Ctrl/Cmd + C.',
     revealDone: 'I\u2019ve saved it',
   },
+  theme: {
+    label: 'Theme',
+    system: 'Follow system',
+    light: 'Light',
+    dark: 'Dark',
+  },
   pwa: {
     installTitle: 'Install the app',
     installBody: 'Open it offline and use it like a native app.',
