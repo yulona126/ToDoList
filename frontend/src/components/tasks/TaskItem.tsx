@@ -186,6 +186,24 @@ export function TaskItem({
             </span>
           </Tooltip>
 
+          {task.assignee_detail ? (
+            <Tooltip
+              label={t('task.assignedTo', {
+                name: task.assignee_detail.name || task.assignee_detail.email,
+              })}
+            >
+              <span
+                className={cn(
+                  'grid size-5 shrink-0 place-items-center rounded-pill border border-border',
+                  'text-[10px] font-medium text-fg-muted',
+                  isDone && 'opacity-60',
+                )}
+              >
+                {initialsOf(task.assignee_detail.name || task.assignee_detail.email)}
+              </span>
+            </Tooltip>
+          ) : null}
+
           <PriorityMarker priority={task.priority} />
 
           {task.due_date ? (
@@ -370,5 +388,17 @@ function PriorityMarker({ priority }: { priority: TaskPriority }) {
         />
       </svg>
     </span>
+  );
+}
+
+/** Two-character monogram for the assignee chip (no images, no colour). */
+function initialsOf(label: string): string {
+  return (
+    label
+      .split(/[\s@._-]+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? '')
+      .join('') || '?'
   );
 }

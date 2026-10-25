@@ -12,6 +12,7 @@ import {
   TaskType,
 } from '../../lib/constants';
 import { useLists } from '../../hooks/useLists';
+import { useMembers } from '../../hooks/useMembers';
 import { useCreateTag, useTags } from '../../hooks/useTags';
 import { useCreateTask, useUpdateTask } from '../../hooks/useTasks';
 import { fieldError, toApiError, type ApiError } from '../../lib/api';
@@ -55,6 +56,7 @@ export function TaskFormModal({
 
   const listsQuery = useLists(workspaceId);
   const tagsQuery = useTags(workspaceId, open);
+  const membersQuery = useMembers(open ? workspaceId : 0);
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
 
@@ -68,6 +70,7 @@ export function TaskFormModal({
   const [taskType, setTaskType] = useState<TaskType>(TaskType.Dev);
   const [dueDate, setDueDate] = useState('');
   const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
+  const [assigneeId, setAssigneeId] = useState<number | null>(null);
   const [titleError, setTitleError] = useState<string | undefined>();
   const [error, setError] = useState<ApiError | null>(null);
 
@@ -87,6 +90,7 @@ export function TaskFormModal({
     setPriority(task?.priority ?? TaskPriority.Medium);
     setTaskType(task?.task_type ?? TaskType.Dev);
     setDueDate(task?.due_date ?? '');
+    setAssigneeId(task?.assignee ?? null);
     setSelectedTags(task?.tags ?? []);
     setTitleError(undefined);
     setError(null);
@@ -104,6 +108,17 @@ export function TaskFormModal({
     value,
     label: t(TASK_STATUS_LABEL_KEY[value]),
   }));
+  const assigneeOptions: SelectOption[] = useMemo(() => {
+    const rows = membersQuery.data ?? [];
+    return [
+      { value: '', label: t('task.unassigned') },
+      ...rows.map((row) => ({
+        value: String(row.user.id),
+        label: row.user.name || row.user.email,
+      })),
+    ];
+  }, [membersQuery.data, t]);
+
   const priorityOptions: SelectOption[] = TASK_PRIORITY_VALUES.map((value) => ({
     value,
     label: t(TASK_PRIORITY_LABEL_KEY[value]),
@@ -134,6 +149,7 @@ export function TaskFormModal({
       priority,
       task_type: taskType,
       due_date: dueDate || null,
+      assignee: assigneeId,
       tag_ids: selectedTags.map((tag) => tag.id),
     };
 
@@ -287,6 +303,15 @@ export function TaskFormModal({
             onChange={(event) => setTaskType(event.target.value as TaskType)}
           />
         </div>
+
+        <Select
+          label={t('task.assignee')}
+          value={assigneeId === null ? '' : String(assigneeId)}
+          options={assigneeOptions}
+          onChange={(event) =>
+            setAssigneeId(event.target.value ? Number(event.target.value) : null)
+          }
+        />
 
         <div className="flex flex-col gap-1">
           <Input

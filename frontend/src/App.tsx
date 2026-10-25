@@ -8,6 +8,7 @@ import { AppShell } from './components/layout/AppShell';
 import { PageLoader } from './components/ui/Spinner';
 import { HomeRedirect } from './pages/HomeRedirect';
 import { LoginPage } from './pages/LoginPage';
+import { JoinPage } from './pages/JoinPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -39,6 +40,10 @@ export default function App() {
 
   return (
     <Routes>
+      {/* Outside both guards on purpose: the invitee usually has no account yet,
+          and must be able to see who is inviting them before signing up. */}
+      <Route path="/join/:token" element={<JoinPage />} />
+
       <Route element={<PublicOnlyRoute />}>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />

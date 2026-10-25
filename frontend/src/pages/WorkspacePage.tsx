@@ -16,10 +16,13 @@ import { TaskFormModal } from '../components/tasks/TaskFormModal';
 import { TaskItem } from '../components/tasks/TaskItem';
 import { QuickAddTask } from '../components/tasks/QuickAddTask';
 import { WorkspaceFormModal } from '../components/workspace/WorkspaceFormModal';
+import { MembersPanel } from '../components/workspace/MembersPanel';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useDeleteList, useLists } from '../hooks/useLists';
 import { useBulkTasks, useDeleteTask, useTasks, useToggleTask } from '../hooks/useTasks';
 import { useCommitTask, useFlow, useUncommitTask } from '../hooks/useFlow';
+import { useMembers } from '../hooks/useMembers';
+import { useAuth } from '../stores/AuthContext';
 import { useTags } from '../hooks/useTags';
 import { useWorkspace, useDeleteWorkspace } from '../hooks/useWorkspaces';
 import { useKeyboardShortcuts } from '../hooks/useKeyboardShortcuts';
@@ -73,6 +76,8 @@ export function WorkspacePage() {
   const listsQuery = useLists(validWorkspaceId ? workspaceId : 0);
   const tagsQuery = useTags(validWorkspaceId ? workspaceId : 0);
   const flowQuery = useFlow(validWorkspaceId ? workspaceId : 0);
+  const membersQuery = useMembers(validWorkspaceId ? workspaceId : 0);
+  const { user } = useAuth();
   const commitTask = useCommitTask(workspaceId);
   const uncommitTask = useUncommitTask(workspaceId);
   const tasksQuery = useTasks({
@@ -115,6 +120,15 @@ export function WorkspacePage() {
   const [aiCaptureOpen, setAiCaptureOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [timelineTask, setTimelineTask] = useState<Task | null>(null);
+  const [membersOpen, setMembersOpen] = useState(false);
+
+  /* The roster is the source of truth for permissions: the owner may have
+     granted someone admin, and a viewer must not see management controls. */
+  const myRole = useMemo(() => {
+    const rows = membersQuery.data ?? [];
+    return rows.find((row) => row.user.id === user?.id)?.role ?? null;
+  }, [membersQuery.data, user?.id]);
+  const canManageMembers = myRole === 'owner' || myRole === 'admin';
 
   const reportError = useCallback(
     (error: unknown) => {
@@ -310,6 +324,17 @@ export function WorkspacePage() {
             onClick={() => navigate(`/w/${workspaceId}/docs`)}
           >
             {t('document.title')}
+          </Button>
+
+          <Button
+            variant="secondary"
+            iconLeft={<Icon name="compass" size={14} />}
+            onClick={() => setMembersOpen(true)}
+          >
+            {t('members.button')}
+            <span className="num ml-1 text-fg-subtle">
+              {membersQuery.data?.length ?? 0}
+            </span>
           </Button>
 
           <Button
@@ -706,6 +731,14 @@ export function WorkspacePage() {
       <TaskTimelinePanel
         task={timelineTask}
         onClose={() => setTimelineTask(null)}
+      />
+
+      <MembersPanel
+        open={membersOpen}
+        workspaceId={workspaceId}
+        canManage={canManageMembers}
+        currentUserId={user?.id ?? null}
+        onClose={() => setMembersOpen(false)}
       />
 
       <ConfirmDialog

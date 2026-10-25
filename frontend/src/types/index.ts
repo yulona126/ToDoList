@@ -305,6 +305,9 @@ export interface Task {
   age_days: number;
   /** Days since it entered "Now"; null while in the backlog. */
   now_days: number | null;
+  /** Who is responsible; must be a workspace member. */
+  assignee: ID | null;
+  assignee_detail: User | null;
   created_at: string;
   updated_at: string;
 }
@@ -382,6 +385,7 @@ export interface TaskCreatePayload {
   task_type?: TaskType;
   due_date?: string | null;
   tag_ids?: ID[];
+  assignee?: ID | null;
 }
 
 export type TaskUpdatePayload = Partial<TaskCreatePayload>;
@@ -655,4 +659,47 @@ export interface ApiTokenCreateResult extends ApiToken {
 export interface ApiTokenListResult {
   count: number;
   results: ApiToken[];
+}
+
+
+/* ------------------------------------------------------------ §10 sharing */
+
+export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'viewer';
+
+export interface WorkspaceMember {
+  id: ID;
+  user: User;
+  role: WorkspaceRole;
+  joined_at: string;
+}
+
+export type InviteStatus = 'pending' | 'accepted' | 'revoked' | 'expired';
+
+export interface WorkspaceInvite {
+  id: ID;
+  token: string;
+  role: WorkspaceRole;
+  role_label: string;
+  status: InviteStatus;
+  status_label: string;
+  invited_by_detail: User | null;
+  accepted_by_detail: User | null;
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+  /** Server-provided path, e.g. `/join/<token>`. */
+  accept_path: string;
+}
+
+/** Public preview shown on the join page before signing in. */
+export interface InvitePreview {
+  token: string;
+  workspace_name: string;
+  workspace_description: string;
+  role: WorkspaceRole;
+  role_label: string;
+  status: InviteStatus;
+  invited_by: string;
+  expires_at: string;
+  is_usable: boolean;
 }

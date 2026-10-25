@@ -17,6 +17,8 @@ Design notes
 
 from __future__ import annotations
 
+import secrets
+from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
@@ -258,6 +260,17 @@ class Task(TimeStampedModel):
     #: 半开区间查询见 apps/todos/flow.py（不要用 __week，会跨年误匹配）。
     committed_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
+    #: Who is responsible. Must be a member of the workspace (validated in the
+    #: serializer). SET_NULL rather than CASCADE: removing a person from a team
+    #: must never delete their work.
+    assignee = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="assigned_tasks",
+    )
+
     sort_order = models.IntegerField(default=0)
     is_archived = models.BooleanField(default=False)
 
@@ -456,3 +469,88 @@ class TaskEvent(TimeStampedModel):
 
     def __str__(self) -> str:
         return f"{self.task_id} {self.kind}"
+
+
+def generate_invite_token() -> str:
+    """URL-safe, 32 chars. Regenerated per invite; never reused."""
+    return secrets.token_urlsafe(24)
+
+
+class WorkspaceInvite(TimeStampedModel):
+    """A single-use link that admits one person into a workspace.
+
+    Deliberately link-based rather than email-based: the invitee does not need
+    an account yet, and the inviter does not have to know or verify an address.
+    That is the whole convenience budget — one click to mint, one link to send.
+
+    Single use and a short expiry are the security trade-off. Re-inviting is one
+    click, so a reusable link would buy very little and leak a lot.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        ACCEPTED = "accepted", "Accepted"
+        REVOKED = "revoked", "Revoked"
+        EXPIRED = "expired", "Expired"
+
+    DEFAULT_TTL_DAYS = 7
+
+    workspace = models.ForeignKey(
+        Workspace, on_delete=models.CASCADE, related_name="invites"
+    )
+    token = models.CharField(
+        max_length=64, unique=True, default=generate_invite_token
+    )
+    role = models.CharField(
+        max_length=16,
+        choices=WorkspaceMember.Role.choices,
+        default=WorkspaceMember.Role.MEMBER,
+    )
+    invited_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="sent_invites",
+    )
+    expires_at = models.DateTimeField()
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    accepted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="accepted_invites",
+    )
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=["workspace", "-created_at"]),
+            models.Index(fields=["token"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"invite {self.role} -> {self.workspace_id}"
+
+    @property
+    def status(self) -> str:
+        if self.revoked_at is not None:
+            return self.Status.REVOKED
+        if self.accepted_at is not None:
+            return self.Status.ACCEPTED
+        if self.expires_at <= timezone.now():
+            return self.Status.EXPIRED
+        return self.Status.PENDING
+
+    @property
+    def is_usable(self) -> bool:
+        return self.status == self.Status.PENDING
+
+    def save(self, *args: object, **kwargs: object) -> None:
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(
+                days=self.DEFAULT_TTL_DAYS
+            )
+        super().save(*args, **kwargs)

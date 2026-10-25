@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 from django.conf import settings
@@ -10,19 +11,21 @@ from django.db.models import Case, Count, IntegerField, Q, Value, When
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import status, viewsets
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django_filters.rest_framework import DjangoFilterBackend
 
+from apps.accounts.models import User
 from apps.common.mixins import ScopedDetailMixin
 from apps.common.permissions import IsObjectOwnerOrMember
 
 from . import events as ev
+from . import members
 from .flow import flow_summary, story_timeline
 from .filters import (
     DocumentFilter,
@@ -41,8 +44,13 @@ from .models import (
     Workspace,
     WorkspaceMember,
     TaskEvent,
+    WorkspaceInvite,
 )
 from .serializers import (
+    MemberAddSerializer,
+    MemberRoleSerializer,
+    InviteCreateSerializer,
+    WorkspaceInviteSerializer,
     ArchitectureDiagramSerializer,
     BulkActionSerializer,
     DocumentSerializer,
@@ -79,6 +87,14 @@ def _priority_rank_expression() -> Any:
         default=Value(4),
         output_field=IntegerField(),
     )
+
+
+def _role_or_deny(request: Request, workspace: Workspace, minimum: str) -> str:
+    """Raise 403 unless the caller holds at least `minimum` in the workspace."""
+    role = members.role_of(request.user, workspace)
+    if not members.at_least(role, minimum):
+        raise PermissionDenied("你的角色没有这个权限。")
+    return role or ""
 
 
 class WorkspaceViewSet(viewsets.ModelViewSet[Workspace]):
@@ -120,9 +136,45 @@ class WorkspaceViewSet(viewsets.ModelViewSet[Workspace]):
         responses={200: WorkspaceMemberSerializer(many=True)},
         description="List workspace members. V1 returns the owner only.",
     )
-    @action(detail=True, methods=["get"], url_path="members")
+    @extend_schema(
+        methods=["GET"], responses={200: WorkspaceMemberSerializer(many=True)},
+        description="List members. Any member may read this (needed for assignee pickers).",
+    )
+    @extend_schema(methods=["POST"], request=MemberAddSerializer)
+    @action(detail=True, methods=["get", "post"], url_path="members")
     def members(self, request: Request, pk: str | None = None) -> Response:
         workspace = self.get_object()
+
+        if request.method == "POST":
+            _role_or_deny(request, workspace, members.Role.ADMIN)
+            payload = MemberAddSerializer(data=request.data)
+            payload.is_valid(raise_exception=True)
+            user = User.objects.filter(
+                email__iexact=payload.validated_data["email"]
+            ).first()
+            if user is None:
+                return Response(
+                    {
+                        "detail": "这个邮箱还没有注册。用邀请链接更方便。",
+                        "errors": {"email": ["找不到该用户。"]},
+                    },
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            if user.id == workspace.owner_id:
+                return Response(
+                    {"detail": "TA 已经是这个工作区的所有者。", "errors": {}},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            membership = members.add_member(
+                workspace, user,
+                role=payload.validated_data["role"],
+                invited_by=request.user,
+            )
+            return Response(
+                WorkspaceMemberSerializer(membership).data,
+                status=status.HTTP_201_CREATED,
+            )
+
         queryset = workspace.memberships.select_related("user").order_by("created_at")
         page = self.paginate_queryset(queryset)
         serializer = WorkspaceMemberSerializer(
@@ -131,6 +183,98 @@ class WorkspaceViewSet(viewsets.ModelViewSet[Workspace]):
         if page is not None:
             return self.get_paginated_response(serializer.data)
         return Response(serializer.data)
+
+    @extend_schema(request=MemberRoleSerializer, responses={200: WorkspaceMemberSerializer})
+    @action(
+        detail=True, methods=["patch", "delete"], url_path=r"members/(?P<user_id>[^/.]+)"
+    )
+    def member_detail(
+        self, request: Request, pk: str | None = None, user_id: str | None = None
+    ) -> Response:
+        workspace = self.get_object()
+        actor_role = _role_or_deny(request, workspace, members.Role.ADMIN)
+
+        membership = (
+            workspace.memberships.select_related("user")
+            .filter(user_id=user_id)
+            .first()
+        )
+        if membership is None:
+            return Response(
+                {"detail": "成员不存在。", "errors": {}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        target_role = (
+            members.Role.OWNER
+            if membership.user_id == workspace.owner_id
+            else membership.role
+        )
+        if not members.removable_role(actor_role, target_role):
+            raise PermissionDenied("你不能修改或移除这个成员。")
+
+        if request.method == "DELETE":
+            membership.delete()
+            # Removing someone from the team must not leave tasks assigned to a
+            # non-member: that breaks the invariant enforced on assign, and the
+            # assignee picker would show a name nobody can look up.
+            Task.objects.filter(
+                workspace=workspace, assignee_id=membership.user_id
+            ).update(assignee=None, updated_at=timezone.now())
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        payload = MemberRoleSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        membership.role = payload.validated_data["role"]
+        membership.save(update_fields=["role", "updated_at"])
+        return Response(WorkspaceMemberSerializer(membership).data)
+
+    @extend_schema(
+        methods=["GET"], responses={200: WorkspaceInviteSerializer(many=True)},
+        description="Pending and past invites. Admin only.",
+    )
+    @extend_schema(methods=["POST"], request=InviteCreateSerializer)
+    @action(detail=True, methods=["get", "post"], url_path="invites")
+    def invites(self, request: Request, pk: str | None = None) -> Response:
+        workspace = self.get_object()
+        _role_or_deny(request, workspace, members.Role.ADMIN)
+
+        if request.method == "POST":
+            payload = InviteCreateSerializer(data=request.data)
+            payload.is_valid(raise_exception=True)
+            ttl = payload.validated_data.get("ttl_days")
+            invite = WorkspaceInvite.objects.create(
+                workspace=workspace,
+                role=payload.validated_data["role"],
+                invited_by=request.user,
+                expires_at=timezone.now()
+                + timedelta(days=ttl or WorkspaceInvite.DEFAULT_TTL_DAYS),
+            )
+            return Response(
+                WorkspaceInviteSerializer(invite).data,
+                status=status.HTTP_201_CREATED,
+            )
+
+        queryset = workspace.invites.select_related("invited_by", "accepted_by")
+        return Response(WorkspaceInviteSerializer(queryset, many=True).data)
+
+    @extend_schema(request=None, responses={204: None})
+    @action(detail=True, methods=["delete"], url_path=r"invites/(?P<token>[^/.]+)")
+    def revoke_invite(
+        self, request: Request, pk: str | None = None, token: str | None = None
+    ) -> Response:
+        workspace = self.get_object()
+        _role_or_deny(request, workspace, members.Role.ADMIN)
+        invite = workspace.invites.filter(token=token).first()
+        if invite is None:
+            return Response(
+                {"detail": "邀请不存在。", "errors": {}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if invite.accepted_at is None:
+            invite.revoked_at = timezone.now()
+            invite.save(update_fields=["revoked_at", "updated_at"])
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _architecture_or_empty(self, workspace: Workspace) -> ArchitectureDiagram | None:
         try:
@@ -352,9 +496,26 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
     )
     ordering = ("sort_order", "created_at")
 
+    def _assert_can_write(self, workspace: Workspace) -> None:
+        """Viewers are read-only. Enforced here because every task write path
+        (create, update, delete, toggle, commit, bulk) funnels through this
+        viewset."""
+        role = members.role_of(self.request.user, workspace)
+        if not members.can_write_content(role):
+            raise PermissionDenied("只读成员不能修改任务。")
+
     def perform_create(self, serializer: Any) -> None:
+        self._assert_can_write(serializer.validated_data["workspace"])
         task = serializer.save()
         ev.record_event(task, TaskEvent.Kind.CREATED, source=TaskEvent.Source.UI)
+
+    def perform_update(self, serializer: Any) -> None:
+        self._assert_can_write(serializer.instance.workspace)
+        super().perform_update(serializer)
+
+    def perform_destroy(self, instance: Task) -> None:
+        self._assert_can_write(instance.workspace)
+        super().perform_destroy(instance)
 
     def get_queryset(self) -> Any:
         return (
@@ -381,6 +542,7 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
     @action(detail=True, methods=["post"], url_path="toggle")
     def toggle(self, request: Request, pk: str | None = None) -> Response:
         task = self.get_object()
+        self._assert_can_write(task.workspace)
         if task.status == Task.Status.DONE:
             ev.reopen_task(task, source=TaskEvent.Source.UI)
         else:
@@ -400,6 +562,7 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
     @action(detail=True, methods=["post"], url_path="commit")
     def commit(self, request: Request, pk: str | None = None) -> Response:
         task = self.get_object()
+        self._assert_can_write(task.workspace)
         ev.commit_task(task, source=TaskEvent.Source.UI)
         return Response(self.get_serializer(task).data)
 
@@ -411,6 +574,7 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
     @action(detail=True, methods=["post"], url_path="uncommit")
     def uncommit(self, request: Request, pk: str | None = None) -> Response:
         task = self.get_object()
+        self._assert_can_write(task.workspace)
         ev.uncommit_task(task, source=TaskEvent.Source.UI)
         return Response(self.get_serializer(task).data)
 
@@ -677,3 +841,78 @@ class FlowView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response({"workspace": workspace.id, **flow_summary(workspace)})
+
+
+class InvitePreviewView(APIView):
+    """`GET /api/v1/invites/<token>/` — what the join page shows before signing in.
+
+    Public on purpose: the invitee often has no account yet, so the page has to
+    explain who is inviting them to what before asking them to sign up. Only the
+    workspace name, the inviter and the role are exposed — never the contents.
+    """
+
+    permission_classes = [AllowAny]
+    authentication_classes: list[Any] = []
+
+    @extend_schema(responses={200: dict})
+    def get(self, request: Request, token: str) -> Response:
+        invite = (
+            WorkspaceInvite.objects.select_related("workspace", "invited_by")
+            .filter(token=token)
+            .first()
+        )
+        if invite is None:
+            return Response(
+                {"detail": "邀请不存在。", "errors": {}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(
+            {
+                "token": invite.token,
+                "workspace_name": invite.workspace.name,
+                "workspace_description": invite.workspace.description,
+                "role": invite.role,
+                "role_label": dict(members.Role.choices).get(invite.role, invite.role),
+                "status": invite.status,
+                "invited_by": (
+                    invite.invited_by.get_display_name()
+                    if invite.invited_by and hasattr(invite.invited_by, "get_display_name")
+                    else (invite.invited_by.email if invite.invited_by else "")
+                ),
+                "expires_at": invite.expires_at,
+                "is_usable": invite.is_usable,
+            }
+        )
+
+
+class InviteAcceptView(APIView):
+    """`POST /api/v1/invites/<token>/accept/` — join the workspace."""
+
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(request=None, responses={200: dict})
+    def post(self, request: Request, token: str) -> Response:
+        invite = (
+            WorkspaceInvite.objects.select_related("workspace", "invited_by")
+            .filter(token=token)
+            .first()
+        )
+        if invite is None:
+            return Response(
+                {"detail": "邀请不存在。", "errors": {}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        try:
+            membership = members.accept_invite(invite, request.user)
+        except members.InviteError as error:
+            return Response(
+                {"detail": error.message, "errors": {}},
+                status=error.status_code,
+            )
+        return Response(
+            {
+                "workspace": invite.workspace_id,
+                "workspace_name": invite.workspace.name,
+                "role": membership.role,
+            }
+        )

@@ -42,6 +42,12 @@ export const queryKeys = {
     summary: (workspaceId: number) => ['flow', 'summary', workspaceId] as const,
     events: (taskId: number) => ['flow', 'events', taskId] as const,
   },
+  members: {
+    all: ['members'] as const,
+    list: (workspaceId: number) => ['members', 'list', workspaceId] as const,
+    invites: (workspaceId: number) => ['members', 'invites', workspaceId] as const,
+    preview: (token: string) => ['members', 'preview', token] as const,
+  },
   tags: {
     all: ['tags'] as const,
     list: (workspaceId: number) => ['tags', 'list', workspaceId] as const,

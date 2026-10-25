@@ -8,6 +8,8 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     DocumentViewSet,
     FlowView,
+    InviteAcceptView,
+    InvitePreviewView,
     TagViewSet,
     TaskListViewSet,
     TaskViewSet,
@@ -25,4 +27,10 @@ router.register("documents", DocumentViewSet, basename="document")
 
 urlpatterns = [
     path("flow/", FlowView.as_view(), name="flow"),
+    path("invites/<str:token>/", InvitePreviewView.as_view(), name="invite-preview"),
+    path(
+        "invites/<str:token>/accept/",
+        InviteAcceptView.as_view(),
+        name="invite-accept",
+    ),
 ] + router.urls

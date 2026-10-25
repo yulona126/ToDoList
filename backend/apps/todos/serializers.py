@@ -9,6 +9,7 @@ from django.db import models
 from django.utils import timezone
 from rest_framework import serializers
 
+from . import members
 from .models import (
     ArchitectureDiagram,
     Document,
@@ -18,6 +19,7 @@ from .models import (
     Workspace,
     WorkspaceMember,
     TaskEvent,
+    WorkspaceInvite,
 )
 
 User = get_user_model()
@@ -202,6 +204,7 @@ class TaskSerializer(serializers.ModelSerializer[Task]):
     is_committed = serializers.SerializerMethodField()
     age_days = serializers.SerializerMethodField()
     now_days = serializers.SerializerMethodField()
+    assignee_detail = UserBriefSerializer(source="assignee", read_only=True)
 
     class Meta:
         model = Task
@@ -229,6 +232,8 @@ class TaskSerializer(serializers.ModelSerializer[Task]):
             "is_committed",
             "age_days",
             "now_days",
+            "assignee",
+            "assignee_detail",
             "created_at",
             "updated_at",
         )
@@ -292,6 +297,14 @@ class TaskSerializer(serializers.ModelSerializer[Task]):
         )
         if workspace is None:
             raise serializers.ValidationError({"workspace": ["该字段为必填项。"]})
+
+        # Only workspace members may be assigned. Checked here rather than in a
+        # field validator because `workspace` is resolved in this method.
+        if "assignee" in attrs and attrs["assignee"] is not None:
+            if not members.workspace_has_user(workspace, attrs["assignee"]):
+                raise serializers.ValidationError(
+                    {"assignee": ["只能指派给这个工作区的成员。"]}
+                )
 
         # `task_list` may be explicitly set to null to move a task to the inbox.
         if "task_list" in attrs:
@@ -551,3 +564,82 @@ class TaskEventSerializer(serializers.ModelSerializer[TaskEvent]):
             "created_at",
         )
         read_only_fields = fields
+
+
+class WorkspaceInviteSerializer(serializers.ModelSerializer["WorkspaceInvite"]):
+    """An invite as the inviter sees it: enough to copy the link, no secrets."""
+
+    status = serializers.CharField(read_only=True)
+    status_label = serializers.SerializerMethodField()
+    role_label = serializers.SerializerMethodField()
+    invited_by_detail = UserBriefSerializer(source="invited_by", read_only=True)
+    accepted_by_detail = UserBriefSerializer(source="accepted_by", read_only=True)
+    accept_path = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkspaceInvite
+        fields = (
+            "id",
+            "token",
+            "role",
+            "role_label",
+            "status",
+            "status_label",
+            "invited_by_detail",
+            "accepted_by_detail",
+            "expires_at",
+            "accepted_at",
+            "created_at",
+            "accept_path",
+        )
+        read_only_fields = fields
+
+    def get_status_label(self, obj: WorkspaceInvite) -> str:
+        return dict(obj.Status.choices).get(obj.status, obj.status)
+
+    def get_role_label(self, obj: WorkspaceInvite) -> str:
+        return dict(WorkspaceMember.Role.choices).get(obj.role, obj.role)
+
+    def get_accept_path(self, obj: WorkspaceInvite) -> str:
+        return f"/join/{obj.token}"
+
+
+class InviteCreateSerializer(serializers.Serializer[Any]):
+    """Minting an invite needs only a role; token and expiry are generated."""
+
+    role = serializers.ChoiceField(
+        choices=WorkspaceMember.Role.choices,
+        default=WorkspaceMember.Role.MEMBER,
+    )
+    ttl_days = serializers.IntegerField(
+        min_value=1, max_value=30, required=False, allow_null=True, default=None
+    )
+
+    def validate_role(self, value: str) -> str:
+        if value == WorkspaceMember.Role.OWNER:
+            raise serializers.ValidationError("不能通过邀请转让所有权。")
+        return value
+
+
+class MemberRoleSerializer(serializers.Serializer[Any]):
+    role = serializers.ChoiceField(choices=WorkspaceMember.Role.choices)
+
+    def validate_role(self, value: str) -> str:
+        if value == WorkspaceMember.Role.OWNER:
+            raise serializers.ValidationError("所有权不能通过改角色转让。")
+        return value
+
+
+class MemberAddSerializer(serializers.Serializer[Any]):
+    """Add someone who already has an account, by email."""
+
+    email = serializers.EmailField()
+    role = serializers.ChoiceField(
+        choices=WorkspaceMember.Role.choices,
+        default=WorkspaceMember.Role.MEMBER,
+    )
+
+    def validate_role(self, value: str) -> str:
+        if value == WorkspaceMember.Role.OWNER:
+            raise serializers.ValidationError("所有权不能通过改角色转让。")
+        return value
