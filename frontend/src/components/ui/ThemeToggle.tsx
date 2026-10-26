@@ -1,6 +1,7 @@
+import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { THEME_MODE_ORDER, type ThemeMode } from '../../lib/constants';
-import { nextMode } from '../../lib/theme';
+import { isThemeSwitching, nextMode } from '../../lib/theme';
 import { cn } from '../../lib/utils';
 import { useUI } from '../../stores/UIContext';
 
@@ -25,9 +26,48 @@ export function ThemeToggle({ className }: { className?: string }) {
   const { themeMode, setThemeMode } = useUI();
   const { t } = useTranslation();
 
+  /* Latest mode, so the listener below never reads a stale closure. */
+  const modeRef = useRef(themeMode);
+  modeRef.current = themeMode;
+
+  /*
+   * Clicks that land while the reveal is running are delivered to the View
+   * Transition snapshot layer, not to this button, so its own onClick never
+   * fires. They do still reach `window` during capture, and `elementFromPoint`
+   * sees through the snapshot to the real element.
+   *
+   * Without this, measuring three clicks 200ms apart on a 900ms reveal showed
+   * only the first one taking effect — the control felt broken for the duration
+   * of its own animation.
+   */
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (!isThemeSwitching()) return; // the normal onClick path handles it
+      /* `elementFromPoint` is useless here: while a transition runs it reports
+         the root element, not what is visually under the cursor. A rectangle
+         test does not depend on hit-testing at all. */
+      const hit = [...document.querySelectorAll('[data-theme-toggle]')].some(
+        (el) => {
+          const rect = el.getBoundingClientRect();
+          return (
+            event.clientX >= rect.left &&
+            event.clientX <= rect.right &&
+            event.clientY >= rect.top &&
+            event.clientY <= rect.bottom
+          );
+        },
+      );
+      if (!hit) return;
+      setThemeMode(nextMode(modeRef.current));
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+  }, [setThemeMode]);
+
   return (
     <button
       type="button"
+      data-theme-toggle=""
       onClick={(event) => {
         setThemeMode(nextMode(themeMode), {
           x: event.clientX,

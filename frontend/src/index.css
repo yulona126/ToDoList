@@ -9,6 +9,10 @@
    The ONLY source of colour in the app. No component may hardcode a colour.
    --------------------------------------------------------------------------- */
 :root {
+  /* Decides the colour of native UI (scrollbars, form controls, select arrows).
+     It is not a CSS colour — it must be declared in BOTH scopes. */
+  color-scheme: light;
+
   --bg: #ffffff;
   --surface: #ffffff;
   --surface-muted: #fafafa;
@@ -23,6 +27,8 @@
 }
 
 .dark {
+  color-scheme: dark;
+
   --bg: #0a0a0a;
   --surface: #141414;
   --surface-muted: #1c1c1c;
@@ -324,16 +330,36 @@
 }
 
 /* ---------------------------------------------------------------------------
-   Theme switch
-   The reveal is a masked overlay created in JS (see lib/theme.ts), not a View
-   Transition — View Transition snapshots sit above the page and swallow clicks
-   for the duration of the animation. The only thing needed here is that any
-   stray view-transition pseudo element never intercepts input.
+   Theme switch — View Transition cooperation (docs/theme-switching.md §5)
+
+   `startViewTransition` cross-fades the two screenshots by default. That fade
+   would smear the edge of the circular reveal, so it is switched off and the
+   clip-path animation owns the motion. The z-index pair makes sure the new
+   screen sits above the old one, otherwise the growing circle is hidden behind
+   the outgoing screenshot.
    --------------------------------------------------------------------------- */
-::view-transition,
-::view-transition-group(root),
-::view-transition-image-pair(root),
-::view-transition-old(root),
-::view-transition-new(root) {
-  pointer-events: none;
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-switching::view-transition-old(root),
+  html.theme-switching::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+  }
+
+  html.theme-switching::view-transition-old(root) {
+    z-index: 1;
+  }
+
+  html.theme-switching::view-transition-new(root) {
+    z-index: 2;
+  }
+}
+
+/* The whole page is handed over as one screenshot, so per-element colour
+   transitions during the swap would run *behind* it and produce exactly the
+   "some parts already changed, some still fading" artefact this approach exists
+   to avoid. */
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition: none !important;
 }
