@@ -260,6 +260,13 @@ class Task(TimeStampedModel):
     #: 半开区间查询见 apps/todos/flow.py（不要用 __week，会跨年误匹配）。
     committed_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
+    #: Which day you intend to work on this, within the current week.
+    #: `committed_at` says "this week"; this says "which day". Pulling a task
+    #: into Now defaults it to today, so the common case needs no extra input.
+    #: A separate column from `due_date` on purpose: a deadline is when it must
+    #: be finished, this is when you plan to sit down with it.
+    planned_for = models.DateField(null=True, blank=True, db_index=True)
+
     #: Who is responsible. Must be a member of the workspace (validated in the
     #: serializer). SET_NULL rather than CASCADE: removing a person from a team
     #: must never delete their work.
@@ -443,6 +450,7 @@ class TaskEvent(TimeStampedModel):
     class Kind(models.TextChoices):
         CREATED = "created", "Created"
         COMMITTED = "committed", "Pulled into Now"
+        PLANNED = "planned", "Planned for a day"
         UNCOMMITTED = "uncommitted", "Sent back to backlog"
         COMPLETED = "completed", "Completed"
         REOPENED = "reopened", "Reopened"

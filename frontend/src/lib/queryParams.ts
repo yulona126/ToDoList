@@ -38,6 +38,9 @@ export function buildTaskParams(params: TaskQueryParams): QueryParams {
   if (params.is_archived !== undefined) {
     query.is_archived = String(params.is_archived);
   }
+  if (params.committed !== undefined) {
+    query.committed = String(params.committed);
+  }
   query.ordering = params.ordering ?? DEFAULT_TASK_ORDERING;
   query.page_size = String(params.page_size ?? PAGE_SIZE);
   if (params.page) query.page = String(params.page);
@@ -93,6 +96,7 @@ export function normalizeTaskParams(params: TaskQueryParams): TaskQueryParams {
   if (params.due && params.due !== 'all') next.due = params.due;
   if (params.search?.trim()) next.search = params.search.trim();
   if (params.page) next.page = params.page;
+  if (params.committed !== undefined) next.committed = params.committed;
 
   return next;
 }

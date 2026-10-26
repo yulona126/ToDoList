@@ -16,6 +16,8 @@ from __future__ import annotations
 from typing import Any, Iterable
 
 from django.db import transaction
+from datetime import date
+
 from django.utils import timezone
 
 from .models import Task, TaskEvent
@@ -74,9 +76,29 @@ def apply_event(
     return task
 
 
-def commit_task(task: Task, *, source: str = TaskEvent.Source.UI, note: str = "") -> Task:
-    """Pull a task into "Now". Idempotent."""
+def commit_task(
+    task: Task,
+    *,
+    source: str = TaskEvent.Source.UI,
+    note: str = "",
+    planned_for: date | None = None,
+) -> Task:
+    """Pull a task into "Now". Idempotent.
+
+    Defaults the day to today: pulling something in means you are working on it
+    now, so asking "which day?" every time would be exactly the kind of friction
+    this design is trying to remove.
+    """
     if task.committed_at is not None:
+        # Already committed — re-committing only ever means moving the day.
+        if planned_for is not None and task.planned_for != planned_for:
+            return apply_event(
+                task,
+                TaskEvent.Kind.PLANNED,
+                source=source,
+                note=note,
+                planned_for=planned_for,
+            )
         return task
     return apply_event(
         task,
@@ -84,6 +106,24 @@ def commit_task(task: Task, *, source: str = TaskEvent.Source.UI, note: str = ""
         source=source,
         note=note,
         committed_at=timezone.now(),
+        planned_for=planned_for or timezone.localdate(),
+    )
+
+
+def plan_task(
+    task: Task,
+    day: date | None,
+    *,
+    source: str = TaskEvent.Source.UI,
+    note: str = "",
+) -> Task:
+    """Move a Now item to another day, or clear the day (`day=None`)."""
+    return apply_event(
+        task,
+        TaskEvent.Kind.PLANNED,
+        source=source,
+        note=note,
+        planned_for=day,
     )
 
 

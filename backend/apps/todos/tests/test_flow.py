@@ -193,7 +193,22 @@ class FlowMetricTests(BaseFlowTest):
     def test_limit_has_a_floor_so_a_bad_month_cannot_lock_the_tool(self) -> None:
         self.assertEqual(flow.wip_limit(self.workspace), flow.MIN_WIP_LIMIT)
 
+    def test_a_brand_new_workspace_is_not_scolded_about_a_guessed_limit(self) -> None:
+        """With no throughput history the ceiling is invented; nagging about it
+        is noise, not advice."""
+        for i in range(flow.MIN_WIP_LIMIT + 2):
+            self.client.post(f"{TASKS}{self.make_task(title=f"n{i}").id}/commit/")
+        data = self.get_flow().data
+        self.assertNotIn("超过你近四周", data["message"])
+
     def test_exceeding_the_limit_is_reported_with_a_suggestion(self) -> None:
+        # History of 2/week -> median 2 -> limit skips to the floor of 3, so the
+        # ceiling is genuinely measured *and* low enough to exceed.
+        for _ in range(2):
+            done = self.make_task(status=Task.Status.DONE)
+            Task.objects.filter(pk=done.pk).update(
+                completed_at=timezone.now() - timedelta(days=8)
+            )
         for i in range(flow.MIN_WIP_LIMIT + 2):
             self.client.post(f"{TASKS}{self.make_task(title=f"t{i}").id}/commit/")
         data = self.get_flow().data
@@ -245,3 +260,82 @@ class EventHelperTests(BaseFlowTest):
         task = self.make_task()
         ev.note_task(task, "这个模块不能引 Celery")
         self.assertEqual(task.events.get(kind="noted").source, TaskEvent.Source.MCP)
+
+
+class WeeklyCadenceTests(BaseFlowTest):
+    """The week is the commitment; the day is the plan."""
+
+    def test_commit_defaults_the_day_to_today(self) -> None:
+        task = self.make_task()
+        response = self.client.post(f"{TASKS}{task.id}/commit/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["planned_for"], timezone.localdate().isoformat())
+
+    def test_commit_accepts_an_explicit_day(self) -> None:
+        task = self.make_task()
+        day = (timezone.localdate() + timedelta(days=1)).isoformat()
+        response = self.client.post(
+            f"{TASKS}{task.id}/commit/", {"planned_for": day}, format="json"
+        )
+        self.assertEqual(response.data["planned_for"], day)
+
+    def test_replanning_moves_the_day_and_records_it(self) -> None:
+        task = self.make_task()
+        self.client.post(f"{TASKS}{task.id}/commit/")
+        day = (timezone.localdate() + timedelta(days=2)).isoformat()
+        response = self.client.post(
+            f"{TASKS}{task.id}/plan/", {"planned_for": day}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["planned_for"], day)
+        self.assertTrue(task.events.filter(kind="planned").exists())
+
+    def test_planning_is_not_committing(self) -> None:
+        """Planning a backlog task must not silently pull it into the week."""
+        task = self.make_task()
+        self.client.post(
+            f"{TASKS}{task.id}/plan/",
+            {"planned_for": timezone.localdate().isoformat()},
+            format="json",
+        )
+        task.refresh_from_db()
+        self.assertIsNone(task.committed_at)
+
+    def test_flow_reports_the_week_and_the_day(self) -> None:
+        today = timezone.localdate()
+        self.client.post(f"{TASKS}{self.make_task(title="a").id}/commit/")
+        self.client.post(
+            f"{TASKS}{self.make_task(title="b").id}/commit/",
+            {"planned_for": (today + timedelta(days=1)).isoformat()},
+            format="json",
+        )
+        data = self.flow().data
+        self.assertEqual(data["today"], today.isoformat())
+        self.assertEqual(data["today_count"], 1)
+        self.assertEqual(data["now_this_week"], 2)
+        self.assertEqual(data["carryover"], 0)
+        self.assertEqual(len(data["by_day"]), 2)
+        self.assertEqual(
+            data["week_start"], flow.local_week_start(today).isoformat()
+        )
+
+    def test_last_weeks_unfinished_is_reported_as_carryover(self) -> None:
+        task = self.make_task()
+        self.client.post(f"{TASKS}{task.id}/commit/")
+        last_week = timezone.localdate() - timedelta(days=8)
+        Task.objects.filter(pk=task.pk).update(planned_for=last_week)
+
+        data = self.flow().data
+        self.assertEqual(data["carryover"], 1)
+        self.assertEqual(data["now_this_week"], 0)
+        self.assertIn("上周", data["message"])
+
+    def test_empty_today_is_called_out(self) -> None:
+        self.client.post(f"{TASKS}{self.make_task().id}/commit/")
+        Task.objects.update(planned_for=timezone.localdate() + timedelta(days=3))
+        data = self.flow().data
+        self.assertEqual(data["today_count"], 0)
+        self.assertIn("今天", data["message"])
+
+    def flow(self):
+        return self.client.get(f"{FLOW}?workspace={self.workspace.id}")

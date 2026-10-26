@@ -12,6 +12,7 @@ import { Spinner } from '../components/ui/Spinner';
 import { TaskFilters } from '../components/tasks/TaskFilters';
 import { TaskTimelinePanel } from '../components/tasks/TaskTimelinePanel';
 import { FlowStrip } from '../components/flow/FlowStrip';
+import { NowPanel } from '../components/flow/NowPanel';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
 import { TaskItem } from '../components/tasks/TaskItem';
 import { QuickAddTask } from '../components/tasks/QuickAddTask';
@@ -20,7 +21,7 @@ import { MembersPanel } from '../components/workspace/MembersPanel';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useDeleteList, useLists } from '../hooks/useLists';
 import { useBulkTasks, useDeleteTask, useTasks, useToggleTask } from '../hooks/useTasks';
-import { useCommitTask, useFlow, useUncommitTask } from '../hooks/useFlow';
+import { useCommitTask, useFlow, usePlanTask, useUncommitTask } from '../hooks/useFlow';
 import { useMembers } from '../hooks/useMembers';
 import { useAuth } from '../stores/AuthContext';
 import { useTags } from '../hooks/useTags';
@@ -96,6 +97,15 @@ export function WorkspacePage() {
     search: debouncedSearch || undefined,
     ordering: filters.ordering,
   });
+
+  /* Independent of the filters below on purpose: "what am I working on" must
+     not disappear because someone typed a search term. */
+  const nowQuery = useTasks({
+    workspace: workspaceId,
+    committed: true,
+    parent: null,
+  });
+  const planTask = usePlanTask(workspaceId);
 
   const toggleTask = useToggleTask();
   const deleteTask = useDeleteTask();
@@ -382,6 +392,36 @@ export function WorkspacePage() {
       ) : null}
 
       <FlowStrip flow={flowQuery.data} isLoading={flowQuery.isPending} />
+
+      {!selectionMode ? (
+        <NowPanel
+          flow={flowQuery.data}
+          tasks={nowQuery.data?.results ?? []}
+          onPlan={(target, day) =>
+            planTask.mutate(
+              { taskId: target.id, day },
+              { onError: reportError },
+            )
+          }
+          onUncommit={(target) => {
+            uncommitTask.mutate(target.id, {
+              onError: reportError,
+              onSuccess: () =>
+                push({
+                  type: 'success',
+                  message: t('flow.sentBack', { title: target.title }),
+                }),
+            });
+          }}
+          onToggle={(target) => toggleTask.mutate(target, { onError: reportError })}
+          onShowTimeline={(target) => setTimelineTask(target)}
+          onEdit={(target) => {
+            setEditingTask(target);
+            setCreateListId(null);
+            setTaskModalOpen(true);
+          }}
+        />
+      ) : null}
 
       <TaskFilters
         filters={filters}

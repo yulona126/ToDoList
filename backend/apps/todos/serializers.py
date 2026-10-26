@@ -229,6 +229,7 @@ class TaskSerializer(serializers.ModelSerializer[Task]):
             "tag_ids",
             "subtask_stats",
             "committed_at",
+            "planned_for",
             "is_committed",
             "age_days",
             "now_days",
@@ -643,3 +644,8 @@ class MemberAddSerializer(serializers.Serializer[Any]):
         if value == WorkspaceMember.Role.OWNER:
             raise serializers.ValidationError("所有权不能通过改角色转让。")
         return value
+
+class PlanSerializer(serializers.Serializer[Any]):
+    """Which day a Now item is planned for. `null` clears it."""
+
+    planned_for = serializers.DateField(required=False, allow_null=True, default=None)

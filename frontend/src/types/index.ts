@@ -305,6 +305,8 @@ export interface Task {
   age_days: number;
   /** Days since it entered "Now"; null while in the backlog. */
   now_days: number | null;
+  /** Which day you plan to work on it (yyyy-mm-dd), inside the current week. */
+  planned_for: string | null;
   /** Who is responsible; must be a workspace member. */
   assignee: ID | null;
   assignee_detail: User | null;
@@ -361,6 +363,19 @@ export interface FlowSummary {
   now: number;
   backlog: number;
   done_this_week: number;
+  /* --- weekly cadence --- */
+  /** Monday of the current week (yyyy-mm-dd, local). */
+  week_start: string;
+  /** Sunday of the current week (yyyy-mm-dd, local). */
+  week_end: string;
+  /** Today's local date, so the client never computes it differently. */
+  today: string;
+  today_count: number;
+  now_this_week: number;
+  /** Unfinished items still planned for a day before this week. */
+  carryover: number;
+  unscheduled: number;
+  by_day: { date: string; count: number }[];
   wip_limit: number;
   wip_exceeded: boolean;
   wip_headroom: number;
@@ -418,6 +433,8 @@ export interface TaskQueryParams {
   parent?: ID | null | 'any';
   due?: DueFilter;
   is_archived?: boolean;
+  /** true = pulled into Now, false = backlog. Omitted = both. */
+  committed?: boolean;
   search?: string;
   ordering?: string;
   page?: number;

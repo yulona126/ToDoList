@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from django.conf import settings
@@ -47,6 +47,7 @@ from .models import (
     WorkspaceInvite,
 )
 from .serializers import (
+    PlanSerializer,
     MemberAddSerializer,
     MemberRoleSerializer,
     InviteCreateSerializer,
@@ -87,6 +88,18 @@ def _priority_rank_expression() -> Any:
         default=Value(4),
         output_field=IntegerField(),
     )
+
+
+def _parse_day(value: Any) -> date | None:
+    """Accept `YYYY-MM-DD`, an ISO datetime, or None. Bad input means "today"."""
+    if not value:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
 
 
 def _role_or_deny(request: Request, workspace: Workspace, minimum: str) -> str:
@@ -563,7 +576,26 @@ class TaskViewSet(ScopedDetailMixin, viewsets.ModelViewSet[Task]):
     def commit(self, request: Request, pk: str | None = None) -> Response:
         task = self.get_object()
         self._assert_can_write(task.workspace)
-        ev.commit_task(task, source=TaskEvent.Source.UI)
+        day = _parse_day(request.data.get("planned_for"))
+        ev.commit_task(task, source=TaskEvent.Source.UI, planned_for=day)
+        return Response(self.get_serializer(task).data)
+
+    @extend_schema(
+        request=PlanSerializer,
+        responses={200: TaskSerializer},
+        description="Move a Now item to another day (or clear it with null).",
+    )
+    @action(detail=True, methods=["post"], url_path="plan")
+    def plan(self, request: Request, pk: str | None = None) -> Response:
+        task = self.get_object()
+        self._assert_can_write(task.workspace)
+        payload = PlanSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        ev.plan_task(
+            task,
+            payload.validated_data.get("planned_for"),
+            source=TaskEvent.Source.UI,
+        )
         return Response(self.get_serializer(task).data)
 
     @extend_schema(

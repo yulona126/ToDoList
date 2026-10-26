@@ -99,6 +99,8 @@ class TaskFilter(DefaultArchivedFilterMixin, django_filters.FilterSet):
     search = django_filters.CharFilter(method="filter_search")
     archived_param = "is_archived"
     is_archived = django_filters.BooleanFilter(method="filter_is_archived")
+    #: `committed=true` -> items pulled into Now; `false` -> the backlog.
+    committed = django_filters.BooleanFilter(method="filter_committed")
 
     class Meta:
         model = Task
@@ -106,6 +108,9 @@ class TaskFilter(DefaultArchivedFilterMixin, django_filters.FilterSet):
 
     def filter_is_archived(self, queryset: Any, name: str, value: bool) -> Any:
         return queryset.filter(is_archived=bool(value))
+
+    def filter_committed(self, queryset: Any, name: str, value: bool) -> Any:
+        return queryset.filter(committed_at__isnull=not bool(value))
 
     # -- individual filters --------------------------------------------------
     def filter_task_list(self, queryset: Any, name: str, value: str) -> Any:

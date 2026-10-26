@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { commitTask, fetchFlow, fetchTaskEvents, uncommitTask } from '../lib/flowApi';
+import {
+  commitTask,
+  fetchFlow,
+  fetchTaskEvents,
+  planTask,
+  uncommitTask,
+} from '../lib/flowApi';
 import { queryKeys } from './queryKeys';
 import type { Task } from '../types';
 
@@ -51,5 +57,17 @@ export function useUncommitTask(workspaceId: number) {
     mutationFn: (taskId: number) => uncommitTask(taskId),
     onSuccess: (_task: Task, taskId: number) =>
       invalidateAfterMove(client, workspaceId, taskId),
+  });
+}
+
+export function usePlanTask(workspaceId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { taskId: number; day: string | null }) =>
+      planTask(payload.taskId, payload.day),
+    onSuccess: (_task: Task, payload) => {
+      invalidateAfterMove(client, workspaceId, payload.taskId);
+      void client.invalidateQueries({ queryKey: queryKeys.tasks.listPrefix });
+    },
   });
 }

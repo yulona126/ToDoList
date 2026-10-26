@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta
 from statistics import median
 from typing import Any
 
-from django.db.models import Min
+from django.db.models import Count, Min
 from django.utils import timezone
 
 from .models import Task, Workspace
@@ -40,6 +40,12 @@ def week_start(moment: datetime | None = None) -> datetime:
     monday = local.date() - timedelta(days=local.weekday())
     start = datetime.combine(monday, datetime.min.time())
     return timezone.make_aware(start, timezone.get_current_timezone())
+
+
+def local_week_start(day: date | None = None) -> date:
+    """Monday of the week containing `day`, as a local date."""
+    day = day or timezone.localdate()
+    return day - timedelta(days=day.weekday())
 
 
 def week_bounds(moment: datetime | None = None) -> tuple[datetime, datetime]:
@@ -92,6 +98,24 @@ def flow_summary(workspace: Workspace) -> dict[str, Any]:
     limit = wip_limit(workspace)
 
     today = timezone.localdate()
+    ws_start_date = local_week_start(today)
+    ws_end_date = ws_start_date + timedelta(days=7)
+
+    # Within "Now", the week is the commitment and the day is the plan.
+    this_week_qs = now_qs.filter(
+        planned_for__gte=ws_start_date, planned_for__lt=ws_end_date
+    )
+    carryover_qs = now_qs.filter(planned_for__lt=ws_start_date)
+    unscheduled_qs = now_qs.filter(planned_for__isnull=True)
+
+    today_count = now_qs.filter(planned_for=today).count()
+
+    by_day = list(
+        this_week_qs.exclude(planned_for__isnull=True)
+        .values("planned_for")
+        .annotate(count=Count("id"))
+        .order_by("planned_for")
+    )
 
     # Backlog age is measured from creation: an item that has waited is a risk,
     # regardless of what its priority claims.
@@ -121,6 +145,18 @@ def flow_summary(workspace: Workspace) -> dict[str, Any]:
         "now": now_count,
         "backlog": backlog_qs.count(),
         "done_this_week": done_this_week,
+        # --- weekly cadence (docs/story-flow.md) ---
+        "week_start": ws_start_date.isoformat(),
+        "week_end": (ws_end_date - timedelta(days=1)).isoformat(),
+        "today": today.isoformat(),
+        "today_count": today_count,
+        "now_this_week": this_week_qs.count(),
+        "carryover": carryover_qs.count(),
+        "unscheduled": unscheduled_qs.count(),
+        "by_day": [
+            {"date": row["planned_for"].isoformat(), "count": row["count"]}
+            for row in by_day
+        ],
         "wip_limit": limit,
         "wip_exceeded": now_count > limit,
         "wip_headroom": max(0, limit - now_count),
@@ -131,21 +167,53 @@ def flow_summary(workspace: Workspace) -> dict[str, Any]:
         "backlog_aging_days": BACKLOG_AGING_DAYS,
         "overdue": overdue,
         "undated_percent": undated_pct,
-        "message": _message(now_count, limit, oldest_now_days, stale_backlog),
+        "message": _message(
+            now_count, limit, oldest_now_days, stale_backlog,
+            today_count=today_count,
+            carryover=carryover_qs.count(),
+            has_history=any(n > 0 for n in weekly_throughput(workspace)),
+        ),
     }
 
 
-def _message(now_count: int, limit: int, oldest_now_days: int, stale: int) -> str:
-    """A single actionable sentence, because a number without a verb is noise."""
-    if now_count > limit:
-        return f"「现在」有 {now_count} 条，超过你近四周的实测上限 {limit} 条。建议退回 {now_count - limit} 条。"
+def _message(
+    now_count: int,
+    limit: int,
+    oldest_now_days: int,
+    stale: int,
+    *,
+    today_count: int = 0,
+    carryover: int = 0,
+    has_history: bool = True,
+) -> str:
+    """A single actionable sentence, because a number without a verb is noise.
+
+    Ordered by what is most worth interrupting for: unfinished work from last
+    week first, then an empty plan, then over-commitment, then something stuck,
+    then backlog rot. "Normal" is deliberately last and deliberately dull — the
+    common case should not invite action.
+    """
+    if carryover > 0:
+        return (
+            f"上周有 {carryover} 条没做完。今天补上，或者退回 backlog。"
+        )
     if now_count == 0:
         return "「现在」是空的。从 backlog 拉几条进来，否则这周没有明确目标。"
+    if now_count > limit and has_history:
+        # Only meaningful once there is real throughput to compare against.
+        # On a brand-new workspace the ceiling is a guess, and scolding someone
+        # for exceeding a number we invented is just noise.
+        return (
+            f"「现在」有 {now_count} 条，超过你近四周的实测上限 {limit} 条。"
+            f"建议退回 {now_count - limit} 条。"
+        )
     if oldest_now_days >= 7:
         return f"有任务在「现在」待了 {oldest_now_days} 天。要么做完，要么退回 backlog。"
     if stale >= 1:
         return f"backlog 里有 {stale} 条超过 14 天没动。要么做，要么明确删掉。"
-    return f"「现在」{now_count}/{limit}，节奏正常。"
+    if today_count == 0:
+        return f"「现在」{now_count}/{limit}，但今天还没安排。挑一两件放到今天。"
+    return f"今天 {today_count} 条，本周 {now_count}/{limit}，节奏正常。"
 
 
 def story_timeline(task: Task) -> dict[str, Any]:

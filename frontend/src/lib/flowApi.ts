@@ -26,3 +26,11 @@ export async function uncommitTask(taskId: number): Promise<Task> {
   const { data } = await api.post<Task>(`/tasks/${taskId}/uncommit/`);
   return data;
 }
+
+/** Move a Now item to another day (null clears it). */
+export async function planTask(taskId: number, day: string | null): Promise<Task> {
+  const { data } = await api.post<Task>(`/tasks/${taskId}/plan/`, {
+    planned_for: day,
+  });
+  return data;
+}
