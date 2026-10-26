@@ -351,6 +351,11 @@
 
   html.theme-switching::view-transition-new(root) {
     z-index: 2;
+    /* Before the WAAPI animation takes over there is a frame or two with no
+       clip at all, which shows the whole new page and makes the reveal look
+       like it starts from nowhere in particular. Start it as a zero-radius
+       circle at the click point instead. */
+    clip-path: circle(0px at var(--vt-x, 50%) var(--vt-y, 50%));
   }
 }
 

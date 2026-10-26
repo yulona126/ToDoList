@@ -19,7 +19,6 @@ import {
 } from '../lib/constants';
 import {
   applyTheme,
-  nextMode,
   readStoredMode,
   resolveTheme,
   switchTheme,
@@ -127,9 +126,11 @@ export function UIProvider({ children }: { children: ReactNode }) {
     [setThemeMode],
   );
 
+  /* Binary, matching the toggle in the topbar: `system` is only ever the
+     initial default, never something a click can land on. */
   const toggleTheme = useCallback(() => {
-    setThemeMode(nextMode(themeMode));
-  }, [setThemeMode, themeMode]);
+    setThemeMode(theme === 'dark' ? 'light' : 'dark');
+  }, [setThemeMode, theme]);
 
   const dismiss = useCallback((id: string) => {
     const timer = timers.current.get(id);

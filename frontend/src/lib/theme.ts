@@ -140,6 +140,12 @@ export function switchTheme(
   );
 
   switching = true;
+  /* Park the origin on the root *before* the transition starts. Between
+     `startViewTransition` and `transition.ready` the new screenshot has no
+     clip-path yet, so without this the whole page is visible for a frame or two
+     and the reveal then appears to begin wherever the eye happens to be. */
+  root.style.setProperty('--vt-x', `${x}px`);
+  root.style.setProperty('--vt-y', `${y}px`);
   root.classList.add('theme-switching');
 
   const transition = document.startViewTransition(() => {
@@ -180,5 +186,7 @@ export function switchTheme(
   transition.finished.finally(() => {
     switching = false;
     root.classList.remove('theme-switching');
+    root.style.removeProperty('--vt-x');
+    root.style.removeProperty('--vt-y');
   });
 }

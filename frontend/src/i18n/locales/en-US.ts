@@ -229,6 +229,8 @@ const enUS: TranslationSchema = {
       'Some labels were auto-fixed for preview (source text unchanged).',
   },
   task: {
+    advanceStatus: 'Set to {{status}}',
+    pickStatus: 'Pick status',
     assignedTo: 'Assigned to {{name}}',
     assignee: 'Assignee',
     unassigned: 'Unassigned',

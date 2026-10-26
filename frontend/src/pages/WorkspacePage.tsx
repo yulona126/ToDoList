@@ -20,7 +20,13 @@ import { WorkspaceFormModal } from '../components/workspace/WorkspaceFormModal';
 import { MembersPanel } from '../components/workspace/MembersPanel';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useDeleteList, useLists } from '../hooks/useLists';
-import { useBulkTasks, useDeleteTask, useTasks, useToggleTask } from '../hooks/useTasks';
+import {
+  useBulkTasks,
+  useDeleteTask,
+  useTasks,
+  useToggleTask,
+  useUpdateTask,
+} from '../hooks/useTasks';
 import { useCommitTask, useFlow, usePlanTask, useUncommitTask } from '../hooks/useFlow';
 import { useMembers } from '../hooks/useMembers';
 import { useAuth } from '../stores/AuthContext';
@@ -108,6 +114,7 @@ export function WorkspacePage() {
   const planTask = usePlanTask(workspaceId);
 
   const toggleTask = useToggleTask();
+  const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
   const bulkTasks = useBulkTasks();
   const deleteListMutation = useDeleteList();
@@ -598,6 +605,12 @@ export function WorkspacePage() {
                           onDelete={(target) => setPendingDelete(target)}
                           agingDays={flowQuery.data?.backlog_aging_days}
                           onShowTimeline={(target) => setTimelineTask(target)}
+                          onStatusChange={(target, status) =>
+                            updateTask.mutate(
+                              { id: target.id, payload: { status } },
+                              { onError: reportError },
+                            )
+                          }
                           onCommit={(target) => {
                             commitTask.mutate(target.id, {
                               onError: reportError,

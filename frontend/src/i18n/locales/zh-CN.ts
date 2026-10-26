@@ -223,6 +223,8 @@ const zhCN = {
     renderNormalized: '已自动修正部分标签写法以便预览（源码未改）。',
   },
   task: {
+    advanceStatus: '改为「{{status}}」',
+    pickStatus: '选择状态',
     assignedTo: '指派给 {{name}}',
     assignee: '指派给',
     unassigned: '未指派',

@@ -1,15 +1,31 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { THEME_MODE_ORDER, type ThemeMode } from '../../lib/constants';
-import { isThemeSwitching, nextMode } from '../../lib/theme';
+import type { Theme } from '../../lib/constants';
+import { isThemeSwitching } from '../../lib/theme';
 import { cn } from '../../lib/utils';
 import { useUI } from '../../stores/UIContext';
 
-const LABEL_KEY: Record<ThemeMode, string> = {
-  system: 'theme.system',
+const LABEL_KEY: Record<Theme, string> = {
   light: 'theme.light',
   dark: 'theme.dark',
 };
+
+/**
+ * Viewport point the reveal should grow from.
+ *
+ * A real pointer click carries `clientX/clientY`. Activation by keyboard (Enter
+ * or Space on the focused button) produces a click with both set to 0, which
+ * would put the origin in the top-left corner — the reveal then looks like it
+ * starts from the top of the page. Fall back to the centre of the control.
+ */
+function originOf(
+  event: { clientX: number; clientY: number; currentTarget: Element },
+): { x: number; y: number } {
+  const { clientX: x, clientY: y, currentTarget } = event;
+  if (x !== 0 || y !== 0) return { x, y };
+  const rect = currentTarget.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
 
 /**
  * Three-state theme switch: system → light → dark → system.
@@ -23,12 +39,15 @@ const LABEL_KEY: Record<ThemeMode, string> = {
  *    grow from where the user actually pressed.
  */
 export function ThemeToggle({ className }: { className?: string }) {
-  const { themeMode, setThemeMode } = useUI();
+  const { theme, setThemeMode } = useUI();
+  const resolved: Theme = theme === 'dark' ? 'dark' : 'light';
   const { t } = useTranslation();
 
-  /* Latest mode, so the listener below never reads a stale closure. */
-  const modeRef = useRef(themeMode);
-  modeRef.current = themeMode;
+  /* Binary: the two explicit palettes. `system` remains the default until the
+     first click, it is just not a stop in the cycle. */
+  const target: Theme = resolved === 'dark' ? 'light' : 'dark';
+  const targetRef = useRef(target);
+  targetRef.current = target;
 
   /*
    * Clicks that land while the reveal is running are delivered to the View
@@ -58,7 +77,11 @@ export function ThemeToggle({ className }: { className?: string }) {
         },
       );
       if (!hit) return;
-      setThemeMode(nextMode(modeRef.current));
+      /* No coordinates here by definition, so reveal from the toggle itself. */
+      setThemeMode(targetRef.current, {
+        x: event.clientX,
+        y: event.clientY,
+      });
     };
     window.addEventListener('pointerdown', onPointerDown, true);
     return () => window.removeEventListener('pointerdown', onPointerDown, true);
@@ -69,13 +92,11 @@ export function ThemeToggle({ className }: { className?: string }) {
       type="button"
       data-theme-toggle=""
       onClick={(event) => {
-        setThemeMode(nextMode(themeMode), {
-          x: event.clientX,
-          y: event.clientY,
-        });
+        const { x, y } = originOf(event);
+        setThemeMode(target, { x, y });
       }}
-      aria-label={`${t('theme.label')}: ${t(LABEL_KEY[themeMode])}`}
-      title={`${t('theme.label')}: ${t(LABEL_KEY[themeMode])}`}
+      aria-label={`${t('theme.label')}: ${t(LABEL_KEY[resolved])}`}
+      title={`${t('theme.label')}: ${t(LABEL_KEY[resolved])}`}
       className={cn(
         'relative grid size-9 place-items-center overflow-hidden rounded-control',
         'text-fg-muted transition-colors duration-200',
@@ -86,17 +107,17 @@ export function ThemeToggle({ className }: { className?: string }) {
       )}
     >
       <span className="relative size-[16px]">
-        {THEME_MODE_ORDER.map((mode) => (
+        {(['light', 'dark'] as const).map((mode) => (
           <span
             key={mode}
             className={cn(
               'absolute inset-0 grid place-items-center',
               'transition-[opacity,transform] duration-300 ease-out',
-              themeMode === mode
+              resolved === mode
                 ? 'scale-100 opacity-100'
                 : 'pointer-events-none scale-75 opacity-0',
             )}
-            aria-hidden={themeMode !== mode}
+            aria-hidden={resolved !== mode}
           >
             <Glyph mode={mode} />
           </span>
@@ -106,7 +127,7 @@ export function ThemeToggle({ className }: { className?: string }) {
   );
 }
 
-function Glyph({ mode }: { mode: ThemeMode }) {
+function Glyph({ mode }: { mode: Theme }) {
   const common = {
     width: 16,
     height: 16,

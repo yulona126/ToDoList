@@ -9,7 +9,9 @@ import {
 import { cn, formatShortDate } from '../../lib/utils';
 import type { Task } from '../../types';
 import { Badge } from '../ui/Badge';
+import type { TaskStatus } from '../../lib/constants';
 import { Checkbox } from '../ui/Checkbox';
+import { TaskStatusButton } from './TaskStatusButton';
 import { Icon } from '../ui/Icon';
 import { IconButton } from '../ui/IconButton';
 import { Tooltip } from '../ui/Tooltip';
@@ -34,6 +36,8 @@ export interface TaskItemProps {
   onUncommit?: (task: Task) => void;
   /** Open the story timeline. */
   onShowTimeline?: (task: Task) => void;
+  /** Set an arbitrary status from the row (replaces the old checkbox). */
+  onStatusChange?: (task: Task, status: TaskStatus) => void;
 }
 
 /**
@@ -56,6 +60,7 @@ export function TaskItem({
   onCommit,
   onUncommit,
   onShowTimeline,
+  onStatusChange,
 }: TaskItemProps) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -104,12 +109,16 @@ export function TaskItem({
           />
         ) : null}
 
-        <Checkbox
-          checked={done}
-          status={task.status}
-          label={done ? t('common.markTodo') : t('common.markDone')}
-          onChange={() => onToggle(task)}
-        />
+        {onStatusChange && !selectable ? (
+          <TaskStatusButton task={task} onChange={onStatusChange} />
+        ) : (
+          <Checkbox
+            checked={done}
+            status={task.status}
+            label={done ? t('common.markTodo') : t('common.markDone')}
+            onChange={() => onToggle(task)}
+          />
+        )}
 
         {hasSubtasks ? (
           <button
@@ -142,7 +151,6 @@ export function TaskItem({
               done && 'line-through',
             )}
           >
-            {blocked ? <span className="mr-1 font-semibold">!</span> : null}
             <span className="break-words">{task.title}</span>
           </span>
           {showListName && task.task_list_name ? (
