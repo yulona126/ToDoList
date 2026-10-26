@@ -11,19 +11,16 @@ const LABEL_KEY: Record<Theme, string> = {
 };
 
 /**
- * Viewport point the reveal should grow from.
+ * Viewport point the reveal grows from: the centre of the toggle itself.
  *
- * A real pointer click carries `clientX/clientY`. Activation by keyboard (Enter
- * or Space on the focused button) produces a click with both set to 0, which
- * would put the origin in the top-left corner — the reveal then looks like it
- * starts from the top of the page. Fall back to the centre of the control.
+ * Derived from the control's own rect rather than from `clientX/clientY`, which
+ * keeps the origin identical however the switch was triggered — mouse, touch,
+ * Enter/Space, or a programmatic click (those carry 0,0 and used to send the
+ * circle to the top-left corner). Expanding from the icon is also the more
+ * legible choice: the icon is what the user is looking at.
  */
-function originOf(
-  event: { clientX: number; clientY: number; currentTarget: Element },
-): { x: number; y: number } {
-  const { clientX: x, clientY: y, currentTarget } = event;
-  if (x !== 0 || y !== 0) return { x, y };
-  const rect = currentTarget.getBoundingClientRect();
+function originOf(el: Element): { x: number; y: number } {
+  const rect = el.getBoundingClientRect();
   return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
 }
 
@@ -77,11 +74,13 @@ export function ThemeToggle({ className }: { className?: string }) {
         },
       );
       if (!hit) return;
-      /* No coordinates here by definition, so reveal from the toggle itself. */
-      setThemeMode(targetRef.current, {
-        x: event.clientX,
-        y: event.clientY,
-      });
+      /* Recovered clicks only carry coordinates, not the element, so the
+         toggle in the DOM is the reference — there is exactly one. */
+      const el = document.querySelector('[data-theme-toggle]');
+      setThemeMode(
+        targetRef.current,
+        el ? originOf(el) : { x: event.clientX, y: event.clientY },
+      );
     };
     window.addEventListener('pointerdown', onPointerDown, true);
     return () => window.removeEventListener('pointerdown', onPointerDown, true);
@@ -92,8 +91,7 @@ export function ThemeToggle({ className }: { className?: string }) {
       type="button"
       data-theme-toggle=""
       onClick={(event) => {
-        const { x, y } = originOf(event);
-        setThemeMode(target, { x, y });
+        setThemeMode(target, originOf(event.currentTarget));
       }}
       aria-label={`${t('theme.label')}: ${t(LABEL_KEY[resolved])}`}
       title={`${t('theme.label')}: ${t(LABEL_KEY[resolved])}`}

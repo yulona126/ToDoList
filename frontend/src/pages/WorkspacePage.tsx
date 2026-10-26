@@ -594,9 +594,6 @@ export function WorkspacePage() {
                         <TaskItem
                           key={task.id}
                           task={task}
-                          onToggle={(target) => {
-                            toggleTask.mutate(target, { onError: reportError });
-                          }}
                           onEdit={(target) => {
                             setEditingTask(target);
                             setCreateListId(null);

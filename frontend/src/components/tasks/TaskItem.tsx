@@ -10,7 +10,6 @@ import { cn, formatShortDate } from '../../lib/utils';
 import type { Task } from '../../types';
 import { Badge } from '../ui/Badge';
 import type { TaskStatus } from '../../lib/constants';
-import { Checkbox } from '../ui/Checkbox';
 import { TaskStatusButton } from './TaskStatusButton';
 import { Icon } from '../ui/Icon';
 import { IconButton } from '../ui/IconButton';
@@ -19,7 +18,6 @@ import { SubTaskList } from './SubTaskList';
 
 export interface TaskItemProps {
   task: Task;
-  onToggle: (task: Task) => void;
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => void;
   /** Bulk-selection mode: renders a leading square checkbox. */
@@ -49,7 +47,6 @@ export interface TaskItemProps {
  */
 export function TaskItem({
   task,
-  onToggle,
   onEdit,
   onDelete,
   selectable = false,
@@ -109,16 +106,9 @@ export function TaskItem({
           />
         ) : null}
 
-        {onStatusChange && !selectable ? (
-          <TaskStatusButton task={task} onChange={onStatusChange} />
-        ) : (
-          <Checkbox
-            checked={done}
-            status={task.status}
-            label={done ? t('common.markTodo') : t('common.markDone')}
-            onChange={() => onToggle(task)}
-          />
-        )}
+        {/* No leading control: status now lives at the end of the row, where it
+            reads as one more fact about the task rather than the thing you press
+            to finish it. Selection mode still needs its checkbox here. */}
 
         {hasSubtasks ? (
           <button
@@ -251,6 +241,10 @@ export function TaskItem({
                 {t('flow.dayShort', { days: dwellDays })}
               </span>
             </Tooltip>
+          ) : null}
+
+          {onStatusChange && !selectable ? (
+            <TaskStatusButton task={task} onChange={onStatusChange} />
           ) : null}
 
           <span className="flex items-center opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
